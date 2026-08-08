@@ -1,0 +1,13 @@
+{
+  "name": "loom",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "pnpm --parallel --filter @loom/server --filter @loom/web run dev",
+    "seed": "pnpm --filter @loom/server run seed",
+    "build": "pnpm --filter @loom/web run build",
+    "test": "pnpm --filter @loom/shared run test && pnpm --filter @loom/server run test",
+    "check": "pnpm -r run check"
+  },
+  "packageManager": "pnpm@9.15.9"
+}

@@ -1,0 +1,23 @@
+# dependencies
+node_modules/
+
+# builds
+dist/
+*.tsbuildinfo
+
+# runtime data: git repos, worktrees, sqlite db all live here
+data/
+
+# env & local files
+.env
+.env.local
+*.local
+
+# db files anywhere
+*.db
+*.db-journal
+*.db-wal
+*.db-shm
+
+# os
+.DS_Store
