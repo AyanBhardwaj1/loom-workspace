@@ -43,13 +43,20 @@ describe('fork mechanics', () => {
     expect(fork.branchName).not.toBe(session.branchName)
     expect(fork.worktreePath).not.toBe(session.worktreePath)
 
-    // fork log: leading "forked from" status + copy of source events up to the cutoff
+    // fork log: leading "forked from" status + filtered copy of the source
+    // events up to the cutoff (transient thinking/running_tools statuses are
+    // dropped — the fork must never inherit a busy composer) + trailing idle
     const forkEvents = await services.sessions.getEvents(fork.id)
     expect(forkEvents[0]!.type).toBe('status')
     expect(JSON.stringify(forkEvents[0]!.payload)).toContain('Forked from Ada')
     const cutoffIndex = sourceEvents.findIndex((e) => e.id === firstCommit.id)
-    const expectedCopied = sourceEvents.slice(0, cutoffIndex + 1)
-    expect(forkEvents.length).toBe(expectedCopied.length + 1)
+    const expectedCopied = sourceEvents
+      .slice(0, cutoffIndex + 1)
+      .filter(
+        (e) =>
+          !(e.type === 'status' && (e.payload.status === 'thinking' || e.payload.status === 'running_tools')),
+      )
+    expect(forkEvents.length).toBe(expectedCopied.length + 2)
     for (let i = 0; i < expectedCopied.length; i++) {
       const copied = forkEvents[i + 1]!
       expect(copied.type).toBe(expectedCopied[i]!.type)
@@ -57,6 +64,9 @@ describe('fork mechanics', () => {
       expect(copied.id).not.toBe(expectedCopied[i]!.id) // fresh ids
       expect(copied.seq).toBe(i + 2) // contiguous seq in the new log
     }
+    const trailing = forkEvents[forkEvents.length - 1]!
+    expect(trailing.type).toBe('status')
+    expect(trailing.type === 'status' && trailing.payload.status).toBe('idle')
 
     // fork worktree = code state at the fork point (hero yes, features no)
     const forkHtml = fs.readFileSync(path.join(fork.worktreePath, 'index.html'), 'utf8')
@@ -107,9 +117,74 @@ describe('fork mechanics', () => {
     const fork = await services.sessions.forkSession(session.id, bob)
     const sourceEvents = await services.sessions.getEvents(session.id)
     const forkEvents = await services.sessions.getEvents(fork.id)
-    // fork_marker was appended to source AFTER the copy, so: copied = all source events minus the marker, plus lead status
-    expect(forkEvents.length).toBe(sourceEvents.length - 1 + 1)
+    // structure: lead "forked from" status, the source's story (no transient
+    // statuses, no fork_marker — that was appended after the copy), final idle
+    expect(forkEvents[0]!.type).toBe('status')
+    expect(forkEvents[forkEvents.length - 1]!.type).toBe('status')
+    const forkPayloads = forkEvents.map((e) => JSON.stringify(e.payload))
+    for (const e of sourceEvents) {
+      if (e.type === 'user_message' || e.type === 'assistant_message' || e.type === 'commit') {
+        expect(forkPayloads).toContain(JSON.stringify(e.payload))
+      }
+    }
+    expect(forkEvents.some((e) => e.type === 'fork_marker')).toBe(false)
+    expect(forkEvents.map((e) => e.seq)).toEqual(forkEvents.map((_, i) => i + 1))
     expect(fs.existsSync(path.join(fork.worktreePath, 'index.html'))).toBe(true)
+  })
+
+  it('forking mid-turn never inherits a busy composer state', async () => {
+    const { services } = ctx
+    const ada = await makeUser(services, 'Ada', 'ada4@fork.dev')
+    const bob = await makeUser(services, 'Bob', 'bob4@fork.dev')
+    const project = await services.projects.createProject('Forkly4', '', ada)
+    const modules = await services.projects.listModules(project.id)
+    const landing = modules.find((m) => m.name === 'Landing page')!
+    const session = await services.sessions.createSession(landing.id, ada)
+    await (await services.orchestrator.handleUserMessage(session.id, ada, 'Build the hero section')).done
+
+    const events = await services.sessions.getEvents(session.id)
+    // fork exactly at a tool_call — the row the "⑂ fork here" affordance offers
+    const toolCall = events.find((e) => e.type === 'tool_call')!
+    const fork = await services.sessions.forkSession(session.id, bob, toolCall.id)
+    const forkEvents = await services.sessions.getEvents(fork.id)
+
+    const statuses = forkEvents.filter((e) => e.type === 'status')
+    const last = statuses[statuses.length - 1]!
+    expect(last.type === 'status' && last.payload.status).toBe('idle')
+    expect(
+      forkEvents.some(
+        (e) => e.type === 'status' && (e.payload.status === 'thinking' || e.payload.status === 'running_tools'),
+      ),
+    ).toBe(false)
+    // and the new driver can actually drive
+    const res = await services.orchestrator.handleUserMessage(fork.id, bob, 'Keep going from here')
+    expect(res.ok).toBe(true)
+    await res.done
+  })
+
+  it('forking before the first commit rewinds the worktree to the branch base', async () => {
+    const { services } = ctx
+    const ada = await makeUser(services, 'Ada', 'ada5@fork.dev')
+    const bob = await makeUser(services, 'Bob', 'bob5@fork.dev')
+    const project = await services.projects.createProject('Forkly5', '', ada)
+    const modules = await services.projects.listModules(project.id)
+    const landing = modules.find((m) => m.name === 'Landing page')!
+    const session = await services.sessions.createSession(landing.id, ada)
+    await (await services.orchestrator.handleUserMessage(session.id, ada, 'Build the hero section')).done
+    await (await services.orchestrator.handleUserMessage(session.id, ada, 'Now add a features grid')).done
+
+    const events = await services.sessions.getEvents(session.id)
+    const firstUserMessage = events.find((e) => e.type === 'user_message')!
+    // fork at the very first prompt — BEFORE any commit existed
+    const fork = await services.sessions.forkSession(session.id, bob, firstUserMessage.id)
+
+    // the fork's code must be the branch's creation base (README only), not
+    // the source's live HEAD which already contains both turns
+    expect(fs.existsSync(path.join(fork.worktreePath, 'README.md'))).toBe(true)
+    expect(fs.existsSync(path.join(fork.worktreePath, 'index.html'))).toBe(false)
+    const git = services.projects.gitFor(project)
+    const forkLog = await git.log(fork.branchName)
+    expect(forkLog.length).toBe(1) // just the initial commit
   })
 
   it('fork of a session with no commits starts from the branch base', async () => {

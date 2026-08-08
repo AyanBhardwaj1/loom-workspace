@@ -63,7 +63,14 @@ export function useSessionStream(sessionId: string | null): SessionStream {
       }
       for (const e of fresh) {
         if (e.type === 'assistant_message') setStreamingText('')
-        if (e.type === 'status') setAgentStatus(e.payload.status)
+        if (e.type === 'status') {
+          setAgentStatus(e.payload.status)
+          if (e.payload.note === 'Session ended') {
+            setDetail((prev) =>
+              prev ? { ...prev, session: { ...prev.session, status: 'ended' } } : prev,
+            )
+          }
+        }
         if (e.type === 'user_message') setAgentStatus('thinking')
       }
     }

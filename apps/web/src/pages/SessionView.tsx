@@ -1,10 +1,11 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import { ChatLog } from '../components/ChatLog'
 import { Composer } from '../components/Composer'
 import { SpectatorSidebar } from '../components/SpectatorSidebar'
 import { AgentStatusIndicator, Avatar, Spinner } from '../components/ui'
 import { api } from '../lib/api'
+import { wsClient } from '../lib/ws'
 import { useAuth } from '../state/auth'
 import { useSessionStream } from '../state/useSessionStream'
 import { useProject } from './ProjectShell'
@@ -18,6 +19,26 @@ export function SessionView() {
   const [sidebarOpen, setSidebarOpen] = useState(true)
   const [forking, setForking] = useState(false)
   const [ending, setEnding] = useState(false)
+  const [serverError, setServerError] = useState<string | null>(null)
+
+  // presence: tell the hub which session we're actually looking at
+  useEffect(() => {
+    if (!sessionId) return
+    wsClient.setViewing(sessionId)
+    return () => wsClient.setViewing(null)
+  }, [sessionId])
+
+  // surface rejected messages and other server-side errors instead of eating them
+  useEffect(() => {
+    const off = wsClient.onMessage((msg) => {
+      if (msg.t === 'error') {
+        setServerError(msg.message)
+        const timer = setTimeout(() => setServerError(null), 6000)
+        return () => clearTimeout(timer)
+      }
+    })
+    return off
+  }, [])
 
   const meta = stream.detail
   const session = meta?.session
@@ -133,6 +154,11 @@ export function SessionView() {
         {isEnded && (
           <div className="border-b border-ink-700 bg-ink-850 px-5 py-2 text-center text-xs text-ink-300">
             This session has ended — you're reading its transcript. Fork it to keep building from here.
+          </div>
+        )}
+        {serverError && (
+          <div className="border-b border-red-900/60 bg-red-950/30 px-5 py-2 text-center text-xs text-red-300">
+            {serverError}
           </div>
         )}
 

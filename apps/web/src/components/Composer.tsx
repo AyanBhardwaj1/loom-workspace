@@ -4,13 +4,20 @@ import { wsClient } from '../lib/ws'
 
 export function Composer({ sessionId, agentStatus }: { sessionId: string; agentStatus: AgentActivityStatus }) {
   const [text, setText] = useState('')
+  const [notice, setNotice] = useState<string | null>(null)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
   const busy = agentStatus === 'thinking' || agentStatus === 'running_tools'
 
   const send = () => {
     const trimmed = text.trim()
     if (!trimmed || busy) return
-    wsClient.sendUserMessage(sessionId, trimmed)
+    const sent = wsClient.sendUserMessage(sessionId, trimmed)
+    if (!sent) {
+      // keep the draft — never silently drop the user's words
+      setNotice('Connection lost — reconnecting. Your message is kept, try again in a second.')
+      return
+    }
+    setNotice(null)
     setText('')
     textareaRef.current?.focus()
   }
@@ -46,7 +53,11 @@ export function Composer({ sessionId, agentStatus }: { sessionId: string; agentS
         </button>
       </div>
       <div className="mt-1.5 text-[10px] text-ink-400">
-        Enter to send · Shift+Enter for a new line · every change is auto-committed to your session branch
+        {notice ? (
+          <span className="text-amber-300">{notice}</span>
+        ) : (
+          'Enter to send · Shift+Enter for a new line · every change is auto-committed to your session branch'
+        )}
       </div>
     </div>
   )

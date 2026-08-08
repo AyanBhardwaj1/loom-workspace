@@ -23,9 +23,14 @@ export function toDisplayItems(events: SessionEvent[]): DisplayItem[] {
   for (const e of events) {
     switch (e.type) {
       case 'user_message':
+        // message boundary: any tool call still unpaired belongs to a segment
+        // that never completed (e.g. a fork cut mid-turn) — never let a later
+        // segment's result pair with it
+        openToolChips.length = 0
         items.push({ kind: 'user', event: e })
         break
       case 'assistant_message':
+        openToolChips.length = 0
         items.push({ kind: 'assistant', event: e })
         break
       case 'tool_call': {

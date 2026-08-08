@@ -31,7 +31,8 @@ export class ToolExecutor {
     if (resolved !== this.root && !resolved.startsWith(this.root + path.sep)) {
       throw new ToolError(`path escapes the session workspace: ${p}`)
     }
-    const rel = path.relative(this.root, resolved)
+    // case-insensitive: macOS/Windows filesystems would happily open ".GIT"
+    const rel = path.relative(this.root, resolved).toLowerCase()
     if (rel === '.git' || rel.startsWith('.git' + path.sep)) {
       throw new ToolError('the .git directory is off-limits')
     }
@@ -172,7 +173,13 @@ export class ToolExecutor {
       timeout: COMMAND_TIMEOUT_MS,
       all: true,
       reject: false,
-      env: { NO_COLOR: '1' },
+      // extendEnv:false — the child must NOT inherit the server's environment
+      // (ANTHROPIC_API_KEY, COOKIE_SECRET, DATABASE_URL…). `node` can read its
+      // env and filesystem, so it gets a minimal env and the worktree as HOME.
+      // True OS-level isolation (containers/jails) is the production answer;
+      // this closes the secret-leak channel for the demo threat model.
+      extendEnv: false,
+      env: { PATH: process.env.PATH ?? '/usr/bin:/bin', HOME: this.root, NO_COLOR: '1' },
     })
     const output = truncate(String(res.all ?? ''), MAX_COMMAND_OUTPUT)
     const ok = res.exitCode === 0

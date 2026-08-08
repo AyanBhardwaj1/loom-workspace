@@ -94,6 +94,25 @@ describe('full mock session (integration)', () => {
     expect(ended!.status).toBe('idle')
   })
 
+  it('ending a session mid-turn sticks — the in-flight turn cannot resurrect it', async () => {
+    const { services } = ctx
+    const user = await makeUser(services, 'Ada', 'ada4@test.dev')
+    const project = await services.projects.createProject('Testly', '', user)
+    const modules = await services.projects.listModules(project.id)
+    const session = await services.sessions.createSession(modules[0]!.id, user)
+
+    const turn = await services.orchestrator.handleUserMessage(session.id, user, 'Start building something')
+    expect(turn.ok).toBe(true)
+    await services.sessions.endSession(session.id)
+    await turn.done
+
+    const row = await services.sessions.getSession(session.id)
+    expect(row!.status).toBe('ended')
+    // and no further messages are accepted
+    const after = await services.orchestrator.handleUserMessage(session.id, user, 'hello?')
+    expect(after.ok).toBe(false)
+  })
+
   it('the mock provider exercises multiple modules sensibly', async () => {
     const { services } = ctx
     const user = await makeUser(services, 'Ada', 'ada3@test.dev')

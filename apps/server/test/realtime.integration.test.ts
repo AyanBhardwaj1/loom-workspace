@@ -125,6 +125,12 @@ describe('realtime (integration)', () => {
       (m) => m.t === 'presence' && m.users.length === 2,
     )
 
+    // explicit viewing hint drives watcher presence (subscribing alone must not)
+    spectator.send({ t: 'viewing', sessionId: session.id })
+    await driver.waitFor(
+      (m) => m.t === 'presence' && m.users.some((u) => u.viewing === session.id),
+    )
+
     // driver sends a message over WS; spectator sees the whole turn live
     driver.send({ t: 'user_message', sessionId: session.id, text: 'Build the hero section' })
 

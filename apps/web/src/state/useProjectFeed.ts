@@ -100,10 +100,17 @@ export function useProjectFeed(projectId: string | null): ProjectFeed {
         handleUpdate(msg.update)
       }
     })
+    // after a reconnect we may have missed project updates entirely — resync
+    const offOpen = wsClient.onOpen(() => {
+      invalidateProject()
+      void queryClient.invalidateQueries({ queryKey: ['changes', projectId] })
+      void queryClient.invalidateQueries({ queryKey: ['branches', projectId] })
+    })
     const unsub = wsClient.subProject(projectId)
 
     return () => {
       offMessage()
+      offOpen()
       unsub()
       if (invalidateTimer.current) clearTimeout(invalidateTimer.current)
     }

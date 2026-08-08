@@ -21,6 +21,12 @@ export const clientMessageSchema = z.discriminatedUnion('t', [
   z.object({ t: z.literal('user_message'), sessionId: z.string(), text: z.string().min(1).max(20000) }),
   /** Request all persisted events with seq > afterSeq. */
   z.object({ t: z.literal('catchup'), sessionId: z.string(), afterSeq: z.number().int().min(0) }),
+  /**
+   * Presence hint: which session this connection is actually LOOKING at.
+   * Kept separate from `sub` — the spectator sidebar subscribes to streams the
+   * user is not focused on, and must not corrupt watcher counts.
+   */
+  z.object({ t: z.literal('viewing'), sessionId: z.string().nullable() }),
 ])
 
 export type ClientMessage = z.infer<typeof clientMessageSchema>

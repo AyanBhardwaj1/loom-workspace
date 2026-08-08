@@ -4,9 +4,10 @@ services:
     ports:
       - '3001:3001'
     environment:
-      # NOTE: 'development' keeps the demo features (quick-login, ghost
-      # teammate). Switch to 'production' for a real deployment.
-      NODE_ENV: ${NODE_ENV:-development}
+      # Defaults to 'production': anything reachable from a network must not
+      # expose the passwordless dev quick-login. Set NODE_ENV=development in
+      # your .env only for a local demo (enables quick-login + ghost teammate).
+      NODE_ENV: ${NODE_ENV:-production}
       COOKIE_SECRET: ${COOKIE_SECRET:-change-me-in-production}
       DATABASE_URL: postgres://loom:loom@db:5432/loom
       ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}

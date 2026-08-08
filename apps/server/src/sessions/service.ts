@@ -59,18 +59,31 @@ export class SessionService {
     const { db, t } = this.dbh
     const id = ulid()
     const createdAt = new Date().toISOString()
-    const rows = await db
-      .insert(t.sessionEvents)
-      .values({
-        id,
-        sessionId,
-        type,
-        payload: JSON.stringify(payload),
-        createdAt,
-        seq: sql<number>`(select coalesce(max(${t.sessionEvents.seq}), 0) + 1 from ${t.sessionEvents} where ${t.sessionEvents.sessionId} = ${sessionId})`,
-      })
-      .returning({ seq: t.sessionEvents.seq })
-    const seq = rows[0]?.seq ?? 0
+    // The subselect assigns the next per-session seq atomically per statement.
+    // SQLite serializes writes; on Postgres two concurrent appends (e.g. a
+    // fork_marker landing during a turn) can race to the same seq and trip the
+    // unique (session_id, seq) index — retrying recomputes the subselect.
+    let seq = 0
+    for (let attempt = 0; ; attempt++) {
+      try {
+        const rows = await db
+          .insert(t.sessionEvents)
+          .values({
+            id,
+            sessionId,
+            type,
+            payload: JSON.stringify(payload),
+            createdAt,
+            seq: sql<number>`(select coalesce(max(${t.sessionEvents.seq}), 0) + 1 from ${t.sessionEvents} where ${t.sessionEvents.sessionId} = ${sessionId})`,
+          })
+          .returning({ seq: t.sessionEvents.seq })
+        seq = rows[0]?.seq ?? 0
+        break
+      } catch (err) {
+        if (attempt < 4 && /unique|23505/i.test(String(err))) continue
+        throw err
+      }
+    }
 
     await db.update(t.sessions).set({ lastEventAt: createdAt }).where(eq(t.sessions.id, sessionId))
 
@@ -292,23 +305,40 @@ export class SessionService {
       if (!at || at.seq === null) throw new Error('Event not found in source session')
       cutoffSeq = at.seq
     }
-    const copied = allEvents.filter(
+    const inCut = allEvents.filter((e) => e.seq !== null && e.seq <= cutoffSeq)
+    const cutoffEvent = inCut[inCut.length - 1] ?? null
+    const copied = inCut.filter(
       (e) =>
-        e.seq !== null &&
-        e.seq <= cutoffSeq &&
-        // the source's lifecycle notes don't belong in the fork's story
-        !(e.type === 'status' && e.payload.note === 'Session ended'),
+        // the source's lifecycle notes don't belong in the fork's story, and
+        // transient in-flight statuses (thinking/running_tools) must not be
+        // copied: the fork's LAST status event drives its composer state, and
+        // a copied "thinking" would brick it forever
+        !(
+          e.type === 'status' &&
+          (e.payload.note === 'Session ended' ||
+            e.payload.status === 'thinking' ||
+            e.payload.status === 'running_tools')
+        ),
     )
-    const cutoffEvent = copied[copied.length - 1] ?? null
 
-    // branch point: last commit event at-or-before the cutoff, else the
-    // source branch's current HEAD (== its base when no commits exist yet)
+    // branch point: last commit event at-or-before the cutoff. With no commit
+    // in the slice, DON'T use the source branch's live HEAD — later turns may
+    // already have committed past the fork point. The branch state at the
+    // cutoff is the parent of the first commit AFTER the cutoff (== the
+    // branch's creation base, since commits are strictly sequential); only
+    // when the source has no commits at all is its HEAD the true base.
     const lastCommit = [...copied].reverse().find((e) => e.type === 'commit')
     const git = this.gitForRepo(project.repoPath)
-    const baseSha =
-      lastCommit && lastCommit.type === 'commit'
-        ? lastCommit.payload.commitSha
-        : await git.currentSha(source.branchName)
+    let baseSha: string
+    if (lastCommit && lastCommit.type === 'commit') {
+      baseSha = lastCommit.payload.commitSha
+    } else {
+      const nextCommit = allEvents.find((e) => e.type === 'commit' && (e.seq ?? 0) > cutoffSeq)
+      baseSha =
+        nextCommit && nextCommit.type === 'commit'
+          ? await git.currentSha(`${nextCommit.payload.commitSha}^`)
+          : await git.currentSha(source.branchName)
+    }
 
     const sessionId = ulid()
     const branchName = `session/${slugify(module.name)}/${shortId()}`
@@ -353,6 +383,16 @@ export class SessionService {
         payload: JSON.stringify(e.payload),
         createdAt: e.createdAt,
       })),
+      // belt-and-braces: whatever the copied slice ended on, the fork starts
+      // with an idle agent — the composer must never inherit a busy state
+      {
+        id: ulid(),
+        sessionId,
+        seq: copied.length + 2,
+        type: 'status',
+        payload: JSON.stringify({ status: 'idle' } satisfies EventPayloadOf<'status'>),
+        createdAt: now,
+      },
     ]
     // chunked bulk insert (SQLite parameter limits)
     for (let i = 0; i < rowsToInsert.length; i += 100) {
@@ -382,9 +422,17 @@ export class SessionService {
     })
   }
 
+  /**
+   * Lifecycle guard: a session that was ended mid-turn must STAY ended — the
+   * in-flight turn's trailing "back to idle/active" update loses to `ended`.
+   */
   async setSessionRowStatus(sessionId: string, status: 'active' | 'idle' | 'ended'): Promise<void> {
     const { db, t } = this.dbh
-    await db.update(t.sessions).set({ status }).where(eq(t.sessions.id, sessionId))
+    const where =
+      status === 'ended'
+        ? eq(t.sessions.id, sessionId)
+        : and(eq(t.sessions.id, sessionId), ne(t.sessions.status, 'ended'))
+    await db.update(t.sessions).set({ status }).where(where)
   }
 
   async listSessionsForModule(moduleId: string): Promise<SessionRow[]> {

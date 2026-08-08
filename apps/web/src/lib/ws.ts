@@ -17,6 +17,7 @@ class WSClient {
   private reconnectDelay = 800
   private reconnectTimer: ReturnType<typeof setTimeout> | null = null
   private closedByUser = false
+  private viewing: string | null = null
 
   connect(): void {
     if (this.ws && (this.ws.readyState === WebSocket.OPEN || this.ws.readyState === WebSocket.CONNECTING)) return
@@ -30,6 +31,7 @@ class WSClient {
       // restore server-side subscriptions lost with the old socket
       for (const sessionId of this.sessionSubs.keys()) this.raw({ t: 'sub', sessionId })
       for (const projectId of this.projectSubs.keys()) this.raw({ t: 'sub_project', projectId })
+      if (this.viewing) this.raw({ t: 'viewing', sessionId: this.viewing })
       for (const l of [...this.openListeners]) l()
     }
     ws.onmessage = (e) => {
@@ -108,8 +110,20 @@ class WSClient {
     }
   }
 
-  sendUserMessage(sessionId: string, text: string): void {
+  /** Presence hint: what the user is looking at (independent of subscriptions). */
+  setViewing(sessionId: string | null): void {
+    this.viewing = sessionId
+    this.raw({ t: 'viewing', sessionId })
+  }
+
+  /** Returns false when the socket is down — callers must NOT drop user text silently. */
+  sendUserMessage(sessionId: string, text: string): boolean {
+    if (!this.isOpen()) {
+      this.connect()
+      return false
+    }
     this.raw({ t: 'user_message', sessionId, text })
+    return true
   }
 
   catchup(sessionId: string, afterSeq: number): void {

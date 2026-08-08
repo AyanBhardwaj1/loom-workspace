@@ -17,8 +17,12 @@ interface ConnState {
   sessionProjects: Map<string, string>
   /** projectId → bus unsubscribe */
   projectSubs: Map<string, () => void>
-  /** the session this connection is currently looking at */
+  /** the session this connection is currently looking at (explicit `viewing` message) */
   viewing: string | null
+  /** projectId of the viewed session, for presence bookkeeping */
+  viewingProject: string | null
+  /** serializes message handling — a quick sub/unsub must not race itself */
+  chain: Promise<void>
 }
 
 const CATCHUP_BATCH_SIZE = 500
@@ -50,10 +54,13 @@ export class Hub {
       sessionProjects: new Map(),
       projectSubs: new Map(),
       viewing: null,
+      viewingProject: null,
+      chain: Promise.resolve(),
     }
     this.conns.add(conn)
     socket.on('message', (data) => {
-      void this.onMessage(conn, String(data))
+      const raw = String(data)
+      conn.chain = conn.chain.then(() => this.onMessage(conn, raw)).catch(() => {})
     })
     socket.on('close', () => this.cleanup(conn))
     socket.on('error', () => this.cleanup(conn))
@@ -108,8 +115,8 @@ export class Hub {
           conn.sessionSubs.set(msg.sessionId, unsub)
           conn.sessionProjects.set(msg.sessionId, session.projectId)
         }
-        conn.viewing = msg.sessionId
-        this.broadcastPresence(session.projectId)
+        // NOTE: subscribing ≠ viewing — the spectator sidebar subscribes to
+        // streams the user is not focused on; `viewing` is its own message
         return
       }
       case 'unsub': {
@@ -118,8 +125,26 @@ export class Hub {
         conn.sessionSubs.delete(msg.sessionId)
         const projectId = conn.sessionProjects.get(msg.sessionId)
         conn.sessionProjects.delete(msg.sessionId)
-        if (conn.viewing === msg.sessionId) conn.viewing = null
         if (projectId) this.broadcastPresence(projectId)
+        return
+      }
+      case 'viewing': {
+        const previousProject = conn.viewingProject
+        if (msg.sessionId === null) {
+          conn.viewing = null
+          conn.viewingProject = null
+        } else {
+          const session = await sessions.getSession(msg.sessionId)
+          if (!session) return
+          if (!(await projects.isMember(session.projectId, conn.user.id))) return
+          conn.viewing = msg.sessionId
+          conn.viewingProject = session.projectId
+        }
+        if (previousProject && previousProject !== conn.viewingProject) {
+          this.broadcastPresence(previousProject)
+        }
+        if (conn.viewingProject) this.broadcastPresence(conn.viewingProject)
+        else if (previousProject) this.broadcastPresence(previousProject)
         return
       }
       case 'sub_project': {
