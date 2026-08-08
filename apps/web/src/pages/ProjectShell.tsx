@@ -1,8 +1,9 @@
-import { createContext, useContext } from 'react'
+import { createContext, useContext, useState } from 'react'
 import { Link, NavLink, Outlet, useParams } from 'react-router-dom'
 import { useQuery, type UseQueryResult } from '@tanstack/react-query'
 import { clsx } from 'clsx'
 import type { ProjectDetail } from '@loom/shared'
+import { AiSettingsDialog } from '../components/AiSettingsDialog'
 import { Avatar, Spinner } from '../components/ui'
 import { api } from '../lib/api'
 import { useAuth } from '../state/auth'
@@ -27,6 +28,7 @@ export function ProjectShell() {
   const { projectId } = useParams<{ projectId: string }>()
   const { user, logout } = useAuth()
   const feed = useProjectFeed(projectId ?? null)
+  const [aiOpen, setAiOpen] = useState(false)
 
   const detailQuery = useQuery({
     queryKey: ['project', projectId],
@@ -71,6 +73,13 @@ export function ProjectShell() {
             🕘
           </NavLink>
           <div className="mt-auto flex flex-col items-center gap-2">
+            <button
+              onClick={() => setAiOpen(true)}
+              title="AI provider settings"
+              className="flex h-10 w-10 items-center justify-center rounded-xl text-lg text-ink-400 transition-colors hover:bg-ink-800 hover:text-ink-100"
+            >
+              ⚙
+            </button>
             {feed.presence.length > 0 && (
               <div className="flex flex-col items-center gap-1.5" title="Online now">
                 {feed.presence.slice(0, 4).map((p) => (
@@ -103,6 +112,7 @@ export function ProjectShell() {
             <Outlet />
           )}
         </div>
+        <AiSettingsDialog open={aiOpen} onClose={() => setAiOpen(false)} />
       </div>
     </ProjectContext.Provider>
   )

@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import type { ProjectSummary } from '@loom/shared'
+import { AgentModeChip, AiSettingsDialog } from '../components/AiSettingsDialog'
 import { AvatarStack, Avatar, CardSkeleton, Dialog, EmptyState, ErrorState } from '../components/ui'
 import { api } from '../lib/api'
 import { timeAgo, useNow } from '../lib/time'
@@ -13,6 +14,7 @@ export function Home() {
   const queryClient = useQueryClient()
   const now = useNow()
   const [createOpen, setCreateOpen] = useState(false)
+  const [aiOpen, setAiOpen] = useState(false)
   const [name, setName] = useState('')
   const [description, setDescription] = useState('')
   const [creating, setCreating] = useState(false)
@@ -52,12 +54,17 @@ export function Home() {
           <p className="text-xs text-ink-400">Multiplayer AI development</p>
         </div>
         <div className="ml-auto flex items-center gap-3">
+          <AgentModeChip onClick={() => setAiOpen(true)} />
+          <button onClick={() => setAiOpen(true)} className="btn-ghost px-2 text-base" title="AI provider settings">
+            ⚙
+          </button>
           {user && <Avatar name={user.name} color={user.avatarColor} />}
           <button onClick={() => void logout()} className="btn-ghost text-xs">
             Sign out
           </button>
         </div>
       </header>
+      <AiSettingsDialog open={aiOpen} onClose={() => setAiOpen(false)} />
 
       <div className="mb-5 flex items-center justify-between">
         <h2 className="text-sm font-semibold uppercase tracking-wider text-ink-300">Projects</h2>

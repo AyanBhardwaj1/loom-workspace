@@ -76,8 +76,11 @@ Open http://localhost:5173 and use the one-click dev logins.
 5. Solo? The dashboard's **▶ Simulate teammate** button makes seeded founder
    Prithviraj start a believable live session (same pipeline, zero special
    cases) so you can spectate and fork alone.
-6. `pnpm test` runs the suite; setting `ANTHROPIC_API_KEY` switches to real
-   Claude with zero other changes.
+6. Want the real thing? Click the **⚙ gear → AI provider**, paste an
+   Anthropic or OpenRouter key (any OpenAI-compatible endpoint works via the
+   base-URL field), and every session switches to the real model instantly —
+   no restart, and spectators see the same live stream. `pnpm test` runs the
+   suite; `ANTHROPIC_API_KEY` in the env works too.
 
 ## Stack
 

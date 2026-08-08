@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
+import { AgentModeChip } from '../components/AiSettingsDialog'
 import { ChatLog } from '../components/ChatLog'
 import { Composer } from '../components/Composer'
 import { SpectatorSidebar } from '../components/SpectatorSidebar'
@@ -119,6 +120,9 @@ export function SessionView() {
             </Link>
           )}
           <div className="ml-auto flex items-center gap-3">
+            <span className="hidden xl:inline-flex">
+              <AgentModeChip />
+            </span>
             {isEnded ? (
               <span className="chip">ended</span>
             ) : (

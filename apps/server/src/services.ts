@@ -1,4 +1,4 @@
-import { createAgentStack } from './agent/providers'
+import { AgentRuntime } from './agent/runtime'
 import { AgentOrchestrator } from './agent/orchestrator'
 import { AuthService } from './auth/service'
 import { createDb, type DbHandle } from './db/client'
@@ -21,7 +21,7 @@ export interface Services {
   merge: MergeService
   ghost: GhostCollaborator
   hub: Hub
-  agentMode: 'anthropic' | 'mock'
+  runtime: AgentRuntime
   close(): Promise<void>
 }
 
@@ -34,16 +34,10 @@ export async function createServices(
   const auth = new AuthService(dbh)
   const projects = new ProjectService(dbh, config)
   const sessions = new SessionService(dbh, bus, config)
-  const stack = createAgentStack(config, opts)
-  const orchestrator = new AgentOrchestrator({
-    dbh,
-    config,
-    sessions,
-    projects,
-    provider: stack.provider,
-    summarizer: stack.summarizer,
-  })
-  const merge = new MergeService({ dbh, projects, sessions, conflictResolver: stack.conflictResolver })
+  const runtime = new AgentRuntime(config, dbh, opts)
+  await runtime.loadPersisted()
+  const orchestrator = new AgentOrchestrator({ dbh, config, sessions, projects, runtime })
+  const merge = new MergeService({ dbh, projects, sessions, runtime })
   const ghost = new GhostCollaborator({ dbh, projects, sessions, orchestrator })
   const hub = new Hub({ dbh, bus, sessions, projects, orchestrator })
 
@@ -58,7 +52,7 @@ export async function createServices(
     merge,
     ghost,
     hub,
-    agentMode: stack.mode,
+    runtime,
     close: async () => {
       await dbh.close()
     },

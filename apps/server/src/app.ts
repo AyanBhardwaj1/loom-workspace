@@ -8,6 +8,7 @@ import { authRoutes } from './routes/auth'
 import { devRoutes } from './routes/dev'
 import { projectRoutes } from './routes/projects'
 import { sessionRoutes } from './routes/sessions'
+import { settingsRoutes } from './routes/settings'
 import type { Services } from './services'
 
 export async function buildApp(services: Services): Promise<FastifyInstance> {
@@ -19,11 +20,12 @@ export async function buildApp(services: Services): Promise<FastifyInstance> {
 
   await app.register(fastifyCookie)
 
-  app.get('/api/health', async () => ({ ok: true, agentMode: services.agentMode }))
+  app.get('/api/health', async () => ({ ok: true, agentMode: services.runtime.mode }))
 
   await authRoutes(app, services)
   await projectRoutes(app, services)
   await sessionRoutes(app, services)
+  await settingsRoutes(app, services)
   if (config.isDev) {
     await devRoutes(app, services)
   }

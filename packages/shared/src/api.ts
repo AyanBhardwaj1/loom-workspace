@@ -80,3 +80,29 @@ export interface MergeResult {
 }
 
 export type { ChangeSummary, PresenceUser, SessionSummary, SessionRowStatus }
+
+// ── runtime AI provider settings ────────────────────────────────────────────
+
+export type AiProviderKind = 'anthropic' | 'openrouter'
+export type AiMode = 'mock' | AiProviderKind
+
+export interface AiSettingsDto {
+  /** What the agent runtime is using right now. */
+  mode: AiMode
+  /** Active model id (null in mock mode). */
+  model: string | null
+  /** Key hint like "sk-…abcd" (never the full key). */
+  maskedKey: string | null
+  /** Where the active config came from: pasted in the UI, the server env, or neither. */
+  source: 'runtime' | 'env' | 'none'
+  /** For openrouter/compatible providers: the API base URL in use. */
+  baseUrl: string | null
+}
+
+export interface AiSettingsUpdate {
+  provider: AiProviderKind
+  apiKey: string
+  model?: string
+  /** Any OpenAI-compatible endpoint (OpenRouter default; Ollama, vLLM, LM Studio work too). */
+  baseUrl?: string
+}

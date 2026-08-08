@@ -8,15 +8,15 @@ async function main(): Promise<void> {
   const server = await startServer(services)
 
   const mode =
-    services.agentMode === 'anthropic'
-      ? `real Claude (${config.anthropicModel})`
-      : 'mock agent (set ANTHROPIC_API_KEY for real Claude)'
+    services.runtime.mode === 'mock'
+      ? 'mock agent (set ANTHROPIC_API_KEY or paste a key in Settings for a real LLM)'
+      : `${services.runtime.mode} (${services.runtime.model})`
 
   console.log(`
   ┌─────────────────────────────────────────────────┐
   │  Loom server                                    │
   │  http://localhost:${String(server.port).padEnd(5)}                        │
-  │  ws:   /ws · api: /api · agent: ${services.agentMode.padEnd(9)}       │
+  │  ws:   /ws · api: /api · agent: ${services.runtime.mode.padEnd(9)}       │
   └─────────────────────────────────────────────────┘
   agent provider: ${mode}
   data dir:       ${config.dataDir}

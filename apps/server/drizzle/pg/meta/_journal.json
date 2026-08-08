@@ -8,6 +8,13 @@
       "when": 1786179430932,
       "tag": "0000_useful_major_mapleleaf",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1786230963236,
+      "tag": "0001_oval_scarecrow",
+      "breakpoints": true
     }
   ]
 }

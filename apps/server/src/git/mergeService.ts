@@ -1,6 +1,6 @@
 import { and, eq } from 'drizzle-orm'
 import type { MergeResult } from '@loom/shared'
-import type { ConflictResolver } from '../agent/providers'
+import type { AgentRuntime } from '../agent/runtime'
 import type { DbHandle } from '../db/client'
 import type { ProjectService } from '../projects/service'
 import type { SessionService } from '../sessions/service'
@@ -20,12 +20,13 @@ export class MergeService {
       dbh: DbHandle
       projects: ProjectService
       sessions: SessionService
-      conflictResolver: ConflictResolver | null
+      runtime: AgentRuntime
     },
   ) {}
 
   async mergeBranch(projectId: string, branchName: string, requestedBy: UserRow): Promise<MergeResult> {
-    const { dbh, projects, sessions, conflictResolver } = this.deps
+    const { dbh, projects, sessions } = this.deps
+    const conflictResolver = this.deps.runtime.conflictResolver
     const { db, t } = dbh
     const project = await projects.getProject(projectId)
     if (!project) return { ok: false, merged: false, hadConflicts: false, message: 'Project not found', changeId: null }

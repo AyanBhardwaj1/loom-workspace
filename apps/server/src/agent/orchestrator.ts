@@ -1,10 +1,10 @@
-import type { AgentProvider, AgentTurnContext } from '@loom/shared'
+import type { AgentTurnContext } from '@loom/shared'
 import type { DbHandle } from '../db/client'
 import type { ServerConfig } from '../env'
 import type { ProjectService } from '../projects/service'
 import type { SessionService } from '../sessions/service'
 import { agentSystemPrompt, buildTranscript, countAssistantTurns } from './context'
-import type { Summarizer } from './summarizer'
+import type { AgentRuntime } from './runtime'
 import { ToolExecutor } from './tools'
 
 type UserRow = typeof import('../db/schema.sqlite').users.$inferSelect
@@ -35,8 +35,7 @@ export class AgentOrchestrator {
       config: ServerConfig
       sessions: SessionService
       projects: ProjectService
-      provider: AgentProvider
-      summarizer: Summarizer
+      runtime: AgentRuntime
     },
   ) {}
 
@@ -78,7 +77,9 @@ export class AgentOrchestrator {
     user: UserRow,
     text: string,
   ): Promise<void> {
-    const { sessions, projects, provider, summarizer } = this.deps
+    const { sessions, projects, runtime } = this.deps
+    const provider = runtime.provider
+    const summarizer = runtime.summarizer
     const module = await projects.getModule(session.moduleId)
     const project = await projects.getProject(session.projectId)
     if (!module || !project) throw new Error('Module or project missing')
@@ -153,7 +154,8 @@ export class AgentOrchestrator {
     user: UserRow,
     userMessage: string,
   ): Promise<void> {
-    const { sessions, projects, summarizer } = this.deps
+    const { sessions, projects, runtime } = this.deps
+    const summarizer = runtime.summarizer
     const git = projects.gitFor(project)
     if (!(await git.isDirty(session.worktreePath))) return
 

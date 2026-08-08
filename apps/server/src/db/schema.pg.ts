@@ -138,3 +138,9 @@ export const changes = pgTable(
   },
   (t) => ({ projectIdx: index('changes_project_idx').on(t.projectId, t.createdAt) }),
 )
+
+/** Tiny key-value store for runtime app settings (e.g. the AI provider key). */
+export const appSettings = pgTable('app_settings', {
+  key: text('key').primaryKey(),
+  value: text('value').notNull(),
+})
