@@ -1,0 +1,100 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  color-scheme: dark;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+}
+
+body {
+  @apply bg-ink-950 text-ink-100 font-sans antialiased;
+}
+
+/* quiet scrollbars that fit the dark chrome */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: theme('colors.ink.600') transparent;
+}
+*::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+*::-webkit-scrollbar-thumb {
+  background: theme('colors.ink.600');
+  border-radius: 4px;
+}
+*::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+@layer components {
+  .card {
+    @apply bg-ink-900 border border-ink-700 rounded-2xl;
+  }
+  .chip {
+    @apply inline-flex items-center gap-1.5 rounded-full border border-ink-600 bg-ink-800 px-2.5 py-0.5 text-xs text-ink-200;
+  }
+  .mono-chip {
+    @apply inline-flex items-center rounded-md border border-ink-600 bg-ink-850 px-2 py-0.5 font-mono text-[11px] text-ink-300;
+  }
+  .btn {
+    @apply inline-flex items-center justify-center gap-2 rounded-xl font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed;
+  }
+  .btn-primary {
+    @apply btn bg-accent text-ink-950 hover:bg-accent-soft px-4 py-2 text-sm;
+  }
+  .btn-secondary {
+    @apply btn bg-ink-800 text-ink-100 border border-ink-600 hover:border-ink-400 px-4 py-2 text-sm;
+  }
+  .btn-ghost {
+    @apply btn text-ink-300 hover:text-ink-100 hover:bg-ink-800 px-3 py-1.5 text-sm;
+  }
+  .input {
+    @apply w-full rounded-xl border border-ink-600 bg-ink-850 px-3.5 py-2.5 text-sm text-ink-100 placeholder:text-ink-400 outline-none focus:border-accent transition-colors;
+  }
+  .skeleton {
+    @apply animate-pulse rounded-lg bg-ink-800;
+  }
+}
+
+/* typing caret for streaming assistant text */
+.streaming-caret::after {
+  content: '▍';
+  @apply text-accent;
+  animation: caret-blink 1s steps(2) infinite;
+}
+@keyframes caret-blink {
+  50% {
+    opacity: 0;
+  }
+}
+
+/* three-dot thinking indicator */
+.thinking-dots span {
+  @apply inline-block h-1.5 w-1.5 rounded-full bg-accent;
+  animation: dot-bounce 1.2s ease-in-out infinite;
+}
+.thinking-dots span:nth-child(2) {
+  animation-delay: 0.15s;
+}
+.thinking-dots span:nth-child(3) {
+  animation-delay: 0.3s;
+}
+@keyframes dot-bounce {
+  0%,
+  60%,
+  100% {
+    transform: translateY(0);
+    opacity: 0.5;
+  }
+  30% {
+    transform: translateY(-3px);
+    opacity: 1;
+  }
+}

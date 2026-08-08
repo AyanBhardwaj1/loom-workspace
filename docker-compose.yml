@@ -1,0 +1,38 @@
+services:
+  loom:
+    build: .
+    ports:
+      - '3001:3001'
+    environment:
+      # NOTE: 'development' keeps the demo features (quick-login, ghost
+      # teammate). Switch to 'production' for a real deployment.
+      NODE_ENV: ${NODE_ENV:-development}
+      COOKIE_SECRET: ${COOKIE_SECRET:-change-me-in-production}
+      DATABASE_URL: postgres://loom:loom@db:5432/loom
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      ANTHROPIC_MODEL: ${ANTHROPIC_MODEL:-claude-sonnet-4-5}
+    volumes:
+      - loom-data:/data
+    depends_on:
+      db:
+        condition: service_healthy
+
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: loom
+      POSTGRES_PASSWORD: loom
+      POSTGRES_DB: loom
+    volumes:
+      - pg-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U loom -d loom']
+      interval: 3s
+      timeout: 3s
+      retries: 15
+
+volumes:
+  # /data holds every project's git repo + session worktrees (and sqlite when
+  # DATABASE_URL is unset) — this named volume is the product's real state
+  loom-data:
+  pg-data:

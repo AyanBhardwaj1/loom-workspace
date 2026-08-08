@@ -62,12 +62,16 @@ function pickPlaybook(ctx: AgentTurnContext): Playbook {
 // ---------------------------------------------------------------------------
 
 async function* landingPlaybook(ctx: AgentTurnContext, speak: Speak, pause: Pause): AsyncGenerator<AgentStreamItem> {
-  const msg = ctx.userMessage.toLowerCase()
+  // strip positional phrases ("above the footer") so they don't hijack intent
+  const msg = ctx.userMessage
+    .toLowerCase()
+    .replace(/(above|below|under|over|before|after|into|onto) the (footer|hero|features?|grid|page)/g, '')
   // light keyword steering so demos survive out-of-order asks
   let step: number
-  if (/hero|waitlist|start|first|build.*landing/.test(msg) && !ctx.fileTree.includes('index.html')) step = 0
-  else if (/feature|grid|highlight|below the hero/.test(msg)) step = 1
-  else if (/footer|bottom|links/.test(msg)) step = 2
+  if (!ctx.fileTree.includes('index.html')) step = 0
+  else if (/testimonial|quote|pricing|price|plan|faq|question|section/.test(msg)) step = 3
+  else if (/feature|grid|highlight/.test(msg)) step = 1
+  else if (/footer|copyright/.test(msg)) step = 2
   else step = Math.min(ctx.turnIndex, 3)
 
   if (step === 0) {
@@ -163,7 +167,46 @@ async function* landingPlaybook(ctx: AgentTurnContext, speak: Speak, pause: Paus
     return
   }
 
-  yield* genericPlaybook(ctx, speak, pause)
+  // step 3+: extend the landing page itself with a themed section
+  const theme = /testimonial|quote/.test(msg)
+    ? 'testimonials'
+    : /pricing|price|plan/.test(msg)
+      ? 'pricing'
+      : /faq|question/.test(msg)
+        ? 'faq'
+        : 'highlight'
+  yield* speak(
+    `I'll add a ${theme} section to the landing page, matching the visual language that's already there.\n\n`,
+  )
+  await pause(350)
+  yield { kind: 'tool_call', name: 'read_file', input: { path: 'index.html' } }
+  const read = await ctx.executeTool('read_file', { path: 'index.html' })
+  await pause(300)
+  const base = read.ok && read.content ? read.content : landingIndexHtml(ctx.projectName)
+  const section = landingThemedSection(theme, ctx)
+  const withSection = base.includes(`class="${theme}"`)
+    ? base
+    : base.includes('<footer')
+      ? base.replace(/(\s*)<footer/, `\n${section}\n$1<footer`)
+      : insertSection(base, section)
+  yield* speak(`Slotting the markup in ahead of the footer.\n\n`)
+  yield { kind: 'tool_call', name: 'write_file', input: { path: 'index.html' } }
+  await ctx.executeTool('write_file', { path: 'index.html', content: withSection })
+  await pause(250)
+  yield { kind: 'tool_call', name: 'edit_file', input: { path: 'styles.css', old_string: '/* --- sections --- */' } }
+  const editRes = await ctx.executeTool('edit_file', {
+    path: 'styles.css',
+    old_string: '/* --- sections --- */',
+    new_string: `/* --- sections --- */\n${landingThemedCss(theme)}`,
+  })
+  if (!editRes.ok) {
+    yield { kind: 'tool_call', name: 'write_file', input: { path: `${theme}.css` } }
+    await ctx.executeTool('write_file', { path: `${theme}.css`, content: landingThemedCss(theme) })
+  }
+  await pause(200)
+  yield* speak(
+    `Done — the ${theme} section sits above the footer and picks up the page's dark palette. Say the word if you want the copy tightened or another section added.`,
+  )
 }
 
 // ---------------------------------------------------------------------------
@@ -428,6 +471,81 @@ function featuresCss(): string {
 .feature-icon { font-size: 26px; margin-bottom: 14px; }
 .feature-card h3 { font-size: 18px; margin-bottom: 8px; }
 .feature-card p { color: var(--muted); font-size: 15px; line-height: 1.6; }
+`
+}
+
+function landingThemedSection(theme: string, ctx: AgentTurnContext): string {
+  if (theme === 'testimonials') {
+    return `    <section class="testimonials">
+      <h2>Teams already remember more</h2>
+      <div class="quote-grid">
+        <blockquote class="quote-card">
+          <p>“We stopped asking ‘where did we write that down?’ in week one.”</p>
+          <footer>— Maya, engineering lead</footer>
+        </blockquote>
+        <blockquote class="quote-card">
+          <p>“The first wiki our team actually keeps up to date.”</p>
+          <footer>— Jonas, founder</footer>
+        </blockquote>
+      </div>
+    </section>`
+  }
+  if (theme === 'pricing') {
+    return `    <section class="pricing">
+      <h2>Simple pricing</h2>
+      <div class="tier-grid">
+        <div class="tier-card"><h3>Free</h3><p class="tier-price">$0</p><p>Up to 5 teammates</p></div>
+        <div class="tier-card featured"><h3>Team</h3><p class="tier-price">$8<span>/user</span></p><p>Unlimited pages & search</p></div>
+        <div class="tier-card"><h3>Scale</h3><p class="tier-price">Let's talk</p><p>SSO, audit log, support</p></div>
+      </div>
+    </section>`
+  }
+  if (theme === 'faq') {
+    return `    <section class="faq">
+      <h2>Questions, answered</h2>
+      <details><summary>How is this different from a normal wiki?</summary><p>Pages organize themselves and search understands intent — no librarian required.</p></details>
+      <details><summary>Can we import our existing docs?</summary><p>Yes — Markdown, Notion and Confluence import are on the roadmap.</p></details>
+      <details><summary>Is our data private?</summary><p>Your workspace is isolated and encrypted at rest.</p></details>
+    </section>`
+  }
+  return `    <section class="highlight">
+      <h2>${escapeHtml(trimTo(ctx.userMessage, 60))}</h2>
+      <p>${escapeHtml(trimTo(ctx.userMessage, 160))}</p>
+    </section>`
+}
+
+function landingThemedCss(theme: string): string {
+  if (theme === 'testimonials') {
+    return `.testimonials { padding: 24px 0 96px; text-align: center; }
+.testimonials h2 { font-size: 32px; letter-spacing: -0.02em; margin-bottom: 36px; }
+.quote-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 20px; }
+.quote-card { background: var(--surface); border: 1px solid var(--border); border-radius: 16px; padding: 28px; text-align: left; margin: 0; }
+.quote-card p { font-size: 17px; line-height: 1.6; }
+.quote-card footer { margin-top: 14px; color: var(--muted); font-size: 14px; }
+`
+  }
+  if (theme === 'pricing') {
+    return `.pricing { padding: 24px 0 96px; text-align: center; }
+.pricing h2 { font-size: 32px; letter-spacing: -0.02em; margin-bottom: 36px; }
+.tier-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 20px; }
+.tier-card { background: var(--surface); border: 1px solid var(--border); border-radius: 16px; padding: 28px 24px; }
+.tier-card.featured { border-color: var(--accent); }
+.tier-price { font-size: 34px; font-weight: 800; margin: 10px 0; }
+.tier-price span { font-size: 14px; color: var(--muted); font-weight: 400; }
+.tier-card p { color: var(--muted); font-size: 14px; }
+`
+  }
+  if (theme === 'faq') {
+    return `.faq { padding: 24px 0 96px; max-width: 640px; margin: 0 auto; }
+.faq h2 { font-size: 32px; letter-spacing: -0.02em; margin-bottom: 28px; text-align: center; }
+.faq details { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 16px 20px; margin-bottom: 10px; }
+.faq summary { cursor: pointer; font-weight: 600; }
+.faq details p { margin-top: 10px; color: var(--muted); line-height: 1.6; }
+`
+  }
+  return `.highlight { padding: 24px 0 96px; text-align: center; }
+.highlight h2 { font-size: 28px; margin-bottom: 12px; }
+.highlight p { color: var(--muted); max-width: 560px; margin: 0 auto; line-height: 1.6; }
 `
 }
 

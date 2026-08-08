@@ -292,7 +292,13 @@ export class SessionService {
       if (!at || at.seq === null) throw new Error('Event not found in source session')
       cutoffSeq = at.seq
     }
-    const copied = allEvents.filter((e) => e.seq !== null && e.seq <= cutoffSeq)
+    const copied = allEvents.filter(
+      (e) =>
+        e.seq !== null &&
+        e.seq <= cutoffSeq &&
+        // the source's lifecycle notes don't belong in the fork's story
+        !(e.type === 'status' && e.payload.note === 'Session ended'),
+    )
     const cutoffEvent = copied[copied.length - 1] ?? null
 
     // branch point: last commit event at-or-before the cutoff, else the
