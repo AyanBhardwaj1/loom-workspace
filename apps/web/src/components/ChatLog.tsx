@@ -1,7 +1,8 @@
 import { clsx } from 'clsx'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import type { AgentActivityStatus, SessionEvent } from '@loom/shared'
-import { EventRow, toDisplayItems, type RowActions } from './EventRow'
+import { EventRow } from './EventRow'
+import { toDisplayItems, type RowActions } from './eventStream'
 
 export function ChatLog({
   events,

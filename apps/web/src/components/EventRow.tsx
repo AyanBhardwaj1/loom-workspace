@@ -1,94 +1,7 @@
 import { clsx } from 'clsx'
-import { useMemo, useState, type CSSProperties, type ReactNode } from 'react'
-import type { SessionEvent, SessionEventOf } from '@loom/shared'
-
-/** helper: a CSS custom property for the semantic edge glow */
-const edge = (color: string): CSSProperties => ({ ['--edge' as string]: color })
-
-/**
- * The event log is the source of truth; this module turns it into chat UI.
- * tool_call/tool_result pairs are merged into one chip, noisy status events
- * are dropped, everything else renders as a rich row.
- */
-
-export type DisplayItem =
-  | { kind: 'user'; event: SessionEventOf<'user_message'> }
-  | { kind: 'assistant'; event: SessionEventOf<'assistant_message'> }
-  | { kind: 'tool'; call: SessionEventOf<'tool_call'>; result: SessionEventOf<'tool_result'> | null }
-  | { kind: 'file'; event: SessionEventOf<'file_change'> }
-  | { kind: 'commit'; event: SessionEventOf<'commit'> }
-  | { kind: 'note'; event: SessionEventOf<'status'> }
-  | { kind: 'fork'; event: SessionEventOf<'fork_marker'> }
-  | {
-      kind: 'suggestion'
-      event: SessionEventOf<'suggestion'>
-      decision: 'accepted' | 'dismissed' | null
-    }
-
-export function toDisplayItems(events: SessionEvent[]): DisplayItem[] {
-  const items: DisplayItem[] = []
-  const openToolChips: Array<Extract<DisplayItem, { kind: 'tool' }>> = []
-  // decisions may arrive after their suggestion; resolve in a first pass
-  const decisions = new Map<string, 'accepted' | 'dismissed'>()
-  for (const e of events) {
-    if (e.type === 'suggestion_decision') decisions.set(e.payload.suggestionId, e.payload.decision)
-  }
-  for (const e of events) {
-    switch (e.type) {
-      case 'user_message':
-        // message boundary: any tool call still unpaired belongs to a segment
-        // that never completed (e.g. a fork cut mid-turn) — never let a later
-        // segment's result pair with it
-        openToolChips.length = 0
-        items.push({ kind: 'user', event: e })
-        break
-      case 'assistant_message':
-        openToolChips.length = 0
-        items.push({ kind: 'assistant', event: e })
-        break
-      case 'tool_call': {
-        const chip: Extract<DisplayItem, { kind: 'tool' }> = { kind: 'tool', call: e, result: null }
-        items.push(chip)
-        openToolChips.push(chip)
-        break
-      }
-      case 'tool_result': {
-        const idx = openToolChips.findIndex((c) => c.result === null && c.call.payload.toolName === e.payload.toolName)
-        if (idx >= 0) {
-          openToolChips[idx]!.result = e
-          openToolChips.splice(idx, 1)
-        }
-        break
-      }
-      case 'file_change':
-        items.push({ kind: 'file', event: e })
-        break
-      case 'commit':
-        items.push({ kind: 'commit', event: e })
-        break
-      case 'status':
-        if (e.payload.status === 'error' || (e.payload.note && e.payload.status !== 'thinking' && e.payload.status !== 'running_tools')) {
-          items.push({ kind: 'note', event: e })
-        }
-        break
-      case 'fork_marker':
-        items.push({ kind: 'fork', event: e })
-        break
-      case 'suggestion':
-        items.push({ kind: 'suggestion', event: e, decision: decisions.get(e.payload.suggestionId) ?? null })
-        break
-      case 'suggestion_decision':
-        // folded into its suggestion item above
-        break
-      case 'usage':
-        // metadata for the cost chip, not a chat row
-        break
-      default:
-        break
-    }
-  }
-  return items
-}
+import { useMemo, useState, type ReactNode } from 'react'
+import type { SessionEventOf } from '@loom/shared'
+import { edge, type DisplayItem, type RowActions } from './eventStream'
 
 const TOOL_ICONS: Record<string, string> = {
   list_files: '🗂',
@@ -97,12 +10,6 @@ const TOOL_ICONS: Record<string, string> = {
   edit_file: '🪄',
   delete_file: '🗑',
   run_command: '▶',
-}
-
-export interface RowActions {
-  /** current viewer is the session driver (can accept/dismiss suggestions) */
-  isDriver?: boolean
-  onResolveSuggestion?: (suggestionId: string, decision: 'accepted' | 'dismissed') => void
 }
 
 export function EventRow({
