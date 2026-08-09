@@ -86,10 +86,10 @@ export function ProjectDashboard() {
               {detail.members.map((m) => {
                 const online = feed.presence.some((p) => p.userId === m.id)
                 return (
-                  <div key={m.id} className="relative rounded-full ring-2 ring-ink-950">
+                  <div key={m.id} className={clsx('relative rounded-full ring-2 ring-ink-950', online && 'animate-breathe')}>
                     <Avatar name={m.name} color={m.avatarColor} size="sm" />
                     {online && (
-                      <span className="absolute -bottom-0.5 -right-0.5 h-2 w-2 rounded-full bg-emerald-400 ring-2 ring-ink-950" />
+                      <span className="absolute -bottom-0.5 -right-0.5 h-2 w-2 rounded-full bg-thread-add ring-2 ring-ink-950" style={{ boxShadow: '0 0 6px 0 #38e0a5' }} />
                     )}
                   </div>
                 )
@@ -118,18 +118,22 @@ export function ProjectDashboard() {
           ))}
           <button
             onClick={() => setModuleDialog(true)}
-            className="flex min-h-[9.5rem] flex-col items-center justify-center gap-2 rounded-2xl border border-dashed border-ink-600 text-ink-400 transition-colors hover:border-accent hover:text-accent"
+            className="group flex min-h-[9.5rem] flex-col items-center justify-center gap-2 rounded-2xl border border-dashed border-white/[0.1] text-ink-400 transition-all duration-200 hover:-translate-y-0.5 hover:border-accent/50 hover:bg-accent/[0.04] hover:text-accent"
           >
-            <span className="text-2xl">+</span>
+            <span className="text-2xl transition-transform duration-200 group-hover:scale-110">+</span>
             <span className="text-sm">New module</span>
           </button>
         </div>
       </div>
 
-      {/* live activity feed */}
-      <aside className="hidden w-80 shrink-0 flex-col border-l border-ink-700 lg:flex">
-        <div className="border-b border-ink-700 px-4 py-3 text-xs font-semibold uppercase tracking-wider text-ink-300">
-          Recent changes
+      {/* live activity feed — a ticking terminal readout */}
+      <aside className="hidden w-80 shrink-0 flex-col border-l border-white/[0.07] bg-ink-950/40 lg:flex">
+        <div className="flex items-center gap-2 border-b border-white/[0.07] px-4 py-3">
+          <span className="relative flex h-1.5 w-1.5">
+            <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-thread-add opacity-50" />
+            <span className="relative inline-flex h-1.5 w-1.5 rounded-full bg-thread-add" />
+          </span>
+          <span className="micro-label">recent changes</span>
         </div>
         <div className="flex-1 space-y-2 overflow-y-auto p-3">
           {recentChanges.length === 0 ? (
@@ -147,15 +151,16 @@ export function ProjectDashboard() {
                 key={c.id}
                 to={`/p/${projectId}/history`}
                 className={clsx(
-                  'block rounded-xl border border-ink-700 bg-ink-900 p-3 transition-colors hover:border-ink-500',
+                  'glow-edge block rounded-xl border border-white/[0.06] bg-white/[0.02] p-3 pl-4 transition-all duration-150 hover:-translate-y-px hover:border-white/15 hover:bg-white/[0.04]',
                   feed.freshChangeIds.has(c.id) && 'animate-highlight',
                 )}
+                style={{ ['--edge' as string]: c.authorAvatarColor }}
               >
                 <div className="flex items-center gap-2">
                   <Avatar name={c.authorName} color={c.authorAvatarColor} size="xs" />
-                  <span className="text-[11px] text-ink-300">{c.authorName}</span>
+                  <span className="text-[11px] font-medium text-ink-200">{c.authorName}</span>
                   {c.moduleEmoji && <span className="text-[11px]">{c.moduleEmoji}</span>}
-                  <span className="ml-auto text-[10px] text-ink-400">{timeAgo(c.createdAt, now)}</span>
+                  <span className="ml-auto font-mono text-[10px] text-ink-400">{timeAgo(c.createdAt, now)}</span>
                 </div>
                 <p className="mt-1.5 line-clamp-3 text-xs leading-relaxed text-ink-100">{c.plainExplanation}</p>
               </Link>
@@ -227,21 +232,30 @@ function ModuleCard({
       data-testid={`module-card-${module.name}`}
       onClick={() => navigate(`/p/${projectId}/m/${module.id}`)}
       className={clsx(
-        'card group relative flex min-h-[9.5rem] flex-col p-5 text-left transition-colors hover:border-accent',
-        live && 'border-accent/40',
+        'panel panel-hover group relative flex min-h-[9.5rem] flex-col overflow-hidden p-5 text-left transition-all duration-200 hover:-translate-y-0.5',
+        live && 'border-accent/30',
       )}
     >
+      {/* live-session aura in the driver's color */}
+      {live && (
+        <div
+          className="pointer-events-none absolute -right-10 -top-10 h-28 w-28 rounded-full opacity-60 blur-2xl"
+          style={{ background: `radial-gradient(circle, ${live.driverAvatarColor}44, transparent 70%)` }}
+        />
+      )}
       <div className="flex items-start gap-3">
-        <span className="text-2xl">{module.emoji}</span>
+        <span className="text-2xl drop-shadow-[0_0_10px_rgba(139,124,246,0.25)]">{module.emoji}</span>
         <div className="min-w-0 flex-1">
-          <h3 className="truncate font-semibold group-hover:text-accent-soft">{module.name}</h3>
+          <h3 className="truncate font-semibold tracking-tight transition-colors group-hover:text-accent-soft">
+            {module.name}
+          </h3>
           <p className="mt-0.5 line-clamp-1 text-xs text-ink-400">{module.description}</p>
         </div>
         <StatusPill status={module.status} />
       </div>
       <div className="mt-auto pt-4">
         {live ? (
-          <div className="flex items-center gap-2.5">
+          <div className="flex items-center gap-2.5 rounded-lg border border-white/[0.06] bg-white/[0.03] px-2.5 py-1.5">
             <Avatar name={live.driverName} color={live.driverAvatarColor} size="sm" pulsing />
             <div className="min-w-0 flex-1">
               <div className="truncate text-xs text-ink-100">
@@ -253,7 +267,7 @@ function ModuleCard({
                   · {gist && gist.at >= (live.lastEventAt ?? '') ? gist.gist : 'is in a live session'}
                 </span>
               </div>
-              <div className="text-[10px] text-ink-400">{timeAgo(live.lastEventAt, now)}</div>
+              <div className="micro-label mt-0.5">{timeAgo(live.lastEventAt, now)}</div>
             </div>
           </div>
         ) : (

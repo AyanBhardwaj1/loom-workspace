@@ -114,13 +114,23 @@ export function ModuleView() {
         <div className="space-y-6">
           {active.length > 0 && (
             <section>
-              <h2 className="mb-2.5 text-xs font-semibold uppercase tracking-wider text-ink-300">Live now</h2>
+              <h2 className="mb-2.5 flex items-center gap-2">
+                <span className="relative flex h-1.5 w-1.5">
+                  <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-thread-add opacity-50" />
+                  <span className="relative inline-flex h-1.5 w-1.5 rounded-full bg-thread-add" />
+                </span>
+                <span className="micro-label">live now</span>
+              </h2>
               <div className="space-y-2.5">
                 {active.map((s) => {
                   const gist = feed.activityByModule.get(module.id)
                   const isMine = s.driverUserId === user?.id
                   return (
-                    <div key={s.id} className="card flex items-center gap-4 p-4">
+                    <div
+                      key={s.id}
+                      className="glow-edge card flex items-center gap-4 p-4 pl-5"
+                      style={{ ['--edge' as string]: s.driverAvatarColor }}
+                    >
                       <Avatar name={s.driverName} color={s.driverAvatarColor} pulsing={s.status === 'active'} />
                       <div className="min-w-0 flex-1">
                         <div className="flex items-center gap-2">
@@ -165,13 +175,13 @@ export function ModuleView() {
 
           {past.length > 0 && (
             <section>
-              <h2 className="mb-2.5 text-xs font-semibold uppercase tracking-wider text-ink-300">Past sessions</h2>
+              <h2 className="mb-2.5"><span className="micro-label">past sessions</span></h2>
               <div className="space-y-2">
                 {past.map((s) => (
                   <Link
                     key={s.id}
                     to={`/p/${projectId}/s/${s.id}`}
-                    className="card flex items-center gap-4 p-3.5 transition-colors hover:border-ink-500"
+                    className="panel panel-hover flex items-center gap-4 p-3.5 transition-all duration-150 hover:-translate-y-px"
                   >
                     <Avatar name={s.driverName} color={s.driverAvatarColor} size="sm" />
                     <div className="min-w-0 flex-1">
