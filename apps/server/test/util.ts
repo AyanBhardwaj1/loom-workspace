@@ -10,8 +10,12 @@ export interface TestContext {
   cleanup: () => Promise<void>
 }
 
-/** Isolated services on a temp dir + temp sqlite db, with the fast (no-delay) mock agent. */
-export async function makeTestServices(): Promise<TestContext> {
+/**
+ * Isolated services on a temp dir + temp sqlite db. Defaults to the fast
+ * (no-delay) mock agent; pass `{ fastMock: false }` when a test needs a turn
+ * slow enough to interrupt mid-flight.
+ */
+export async function makeTestServices(opts: { fastMock?: boolean } = {}): Promise<TestContext> {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'loom-test-'))
   const config = loadConfig({
     nodeEnv: 'test',
@@ -21,7 +25,7 @@ export async function makeTestServices(): Promise<TestContext> {
     databaseUrl: null,
     anthropicApiKey: null,
   })
-  const services = await createServices(config, { fastMock: true })
+  const services = await createServices(config, { fastMock: opts.fastMock ?? true })
   return {
     services,
     config,

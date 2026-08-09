@@ -170,6 +170,11 @@ export class Hub {
         if (!res.ok) this.sendError(conn, 'rejected', res.error ?? 'Message rejected')
         return
       }
+      case 'stop': {
+        const res = await orchestrator.stopTurn(msg.sessionId, conn.user)
+        if (!res.ok) this.sendError(conn, 'rejected', res.error ?? 'Could not stop the agent')
+        return
+      }
       case 'suggest': {
         const session = await sessions.getSession(msg.sessionId)
         if (!session) return this.sendError(conn, 'not_found', 'Session not found')

@@ -41,6 +41,12 @@ export interface AgentTurnContext {
   /** Number of assistant messages before this turn (playbook cursor for the mock). */
   turnIndex: number
   /**
+   * Aborted when the driver hits Stop. Providers MUST observe it: stop
+   * streaming and stop calling tools at the next safe point, then return.
+   * Any tool call already yielded is expected to finish (so no result dangles).
+   */
+  signal: AbortSignal
+  /**
    * Execute a tool against the session's sandboxed worktree.
    * Contract: the provider yields {kind:'tool_call'} FIRST (so the orchestrator
    * appends the tool_call event), then calls executeTool with the same

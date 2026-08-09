@@ -58,6 +58,7 @@ export class OpenAICompatProvider implements AgentProvider {
     const fullText: string[] = []
     try {
       for (let round = 0; round < MAX_TOOL_ROUNDS; round++) {
+        if (ctx.signal.aborted) break
         const res = await fetch(`${this.baseUrl}/chat/completions`, {
           method: 'POST',
           headers: {
@@ -68,6 +69,7 @@ export class OpenAICompatProvider implements AgentProvider {
             'X-Title': 'Loom',
           },
           body: JSON.stringify({ model: this.opts.model, messages, tools, stream: true }),
+          signal: ctx.signal,
         })
         if (!res.ok || !res.body) {
           const detail = await safeReadText(res)
@@ -79,7 +81,7 @@ export class OpenAICompatProvider implements AgentProvider {
         let roundText = ''
         const toolCalls: StreamedToolCall[] = []
         for await (const data of sseData(res.body)) {
-          if (data === '[DONE]') break
+          if (ctx.signal.aborted || data === '[DONE]') break
           let chunk: unknown
           try {
             chunk = JSON.parse(data)
@@ -143,6 +145,11 @@ export class OpenAICompatProvider implements AgentProvider {
       }
       yield { kind: 'message_done', fullText: fullText.join('\n\n') }
     } catch (err) {
+      // a Stop aborts the fetch mid-stream — keep the partial text, no error
+      if (ctx.signal.aborted) {
+        if (fullText.length > 0) yield { kind: 'message_done', fullText: fullText.join('\n\n') }
+        return
+      }
       yield {
         kind: 'error',
         message: `LLM call failed: ${err instanceof Error ? err.message : String(err)}`,

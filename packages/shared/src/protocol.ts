@@ -30,6 +30,8 @@ export const clientMessageSchema = z.discriminatedUnion('t', [
   }),
   /** Request all persisted events with seq > afterSeq. */
   z.object({ t: z.literal('catchup'), sessionId: z.string(), afterSeq: z.number().int().min(0) }),
+  /** Driver interrupts the in-flight turn. Partial work is still committed. */
+  z.object({ t: z.literal('stop'), sessionId: z.string() }),
   /**
    * Presence hint: which session this connection is actually LOOKING at.
    * Kept separate from `sub` — the spectator sidebar subscribes to streams the

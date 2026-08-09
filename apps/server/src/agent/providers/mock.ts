@@ -12,7 +12,7 @@ export class MockAgentProvider implements AgentProvider {
   constructor(private opts: { fast?: boolean } = {}) {}
 
   async *runTurn(ctx: AgentTurnContext): AsyncIterable<AgentStreamItem> {
-    const say = this.makeSpeaker()
+    const say = this.makeSpeaker(ctx.signal)
     const parts: string[] = []
     const speak = async function* (this: MockAgentProvider, text: string): AsyncIterable<AgentStreamItem> {
       parts.push(text)
@@ -21,26 +21,36 @@ export class MockAgentProvider implements AgentProvider {
 
     try {
       const playbook = pickPlaybook(ctx)
-      yield* playbook(ctx, speak, this.pause.bind(this))
-      yield { kind: 'message_done', fullText: parts.join('') }
+      // Check abort BEFORE yielding the next item, never after: the previous
+      // item's tool execution has already completed by then, so a stop never
+      // leaves a tool_call without its result.
+      for await (const item of playbook(ctx, speak, (ms) => this.pause(ms, ctx.signal))) {
+        if (ctx.signal.aborted) break
+        yield item
+      }
+      // keep whatever the agent said before being stopped
+      if (parts.join('').trim()) yield { kind: 'message_done', fullText: parts.join('') }
     } catch (err) {
+      if (ctx.signal.aborted) return
       yield { kind: 'error', message: err instanceof Error ? err.message : String(err) }
     }
   }
 
-  private makeSpeaker() {
+  private makeSpeaker(signal: AbortSignal) {
     const fast = this.opts.fast
     return async function* (text: string): AsyncIterable<AgentStreamItem> {
       const tokens = text.split(/(?<=\s)/) // keep whitespace attached
       for (const token of tokens) {
+        if (signal.aborted) return
         yield { kind: 'delta', text: token }
         if (!fast) await sleep(10 + Math.random() * 22)
       }
     }
   }
 
-  private async pause(ms: number): Promise<void> {
-    if (!this.opts.fast) await sleep(ms + Math.random() * 150)
+  private async pause(ms: number, signal: AbortSignal): Promise<void> {
+    if (signal.aborted || this.opts.fast) return
+    await sleep(ms + Math.random() * 150)
   }
 }
 

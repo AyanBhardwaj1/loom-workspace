@@ -40,13 +40,17 @@ export class AnthropicAgentProvider implements AgentProvider {
     const fullText: string[] = []
     try {
       for (let round = 0; round < MAX_TOOL_ROUNDS; round++) {
-        const stream = this.client.messages.stream({
-          model: this.opts.model,
-          max_tokens: 8192,
-          system,
-          messages,
-          tools: AGENT_TOOL_DEFS,
-        })
+        if (ctx.signal.aborted) break
+        const stream = this.client.messages.stream(
+          {
+            model: this.opts.model,
+            max_tokens: 8192,
+            system,
+            messages,
+            tools: AGENT_TOOL_DEFS,
+          },
+          { signal: ctx.signal },
+        )
 
         for await (const event of stream) {
           if (event.type === 'content_block_delta' && event.delta.type === 'text_delta') {
@@ -84,6 +88,11 @@ export class AnthropicAgentProvider implements AgentProvider {
       }
       yield { kind: 'message_done', fullText: fullText.join('\n\n') }
     } catch (err) {
+      // a Stop aborts the request mid-stream — keep the partial text, no error
+      if (ctx.signal.aborted) {
+        if (fullText.length > 0) yield { kind: 'message_done', fullText: fullText.join('\n\n') }
+        return
+      }
       yield {
         kind: 'error',
         message: `Claude call failed: ${err instanceof Error ? err.message : String(err)}`,

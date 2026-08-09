@@ -126,6 +126,11 @@ class WSClient {
     return true
   }
 
+  /** Driver interrupts the in-flight turn. */
+  stop(sessionId: string): void {
+    this.raw({ t: 'stop', sessionId })
+  }
+
   /** Spectator proposes a next step (server rejects if you're the driver). */
   suggest(sessionId: string, text: string): boolean {
     if (!this.isOpen()) {

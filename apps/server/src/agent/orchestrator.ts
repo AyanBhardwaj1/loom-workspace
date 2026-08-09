@@ -28,6 +28,8 @@ export interface TurnStartResult {
  */
 export class AgentOrchestrator {
   private runningTurns = new Set<string>()
+  /** sessionId → controller for the in-flight turn (present only while running). */
+  private aborters = new Map<string, AbortController>()
 
   constructor(
     private deps: {
@@ -41,6 +43,21 @@ export class AgentOrchestrator {
 
   isBusy(sessionId: string): boolean {
     return this.runningTurns.has(sessionId)
+  }
+
+  /**
+   * Interrupt the in-flight turn. The provider stops at its next safe point;
+   * runTurn then commits whatever landed on disk and marks the session idle
+   * with a "Stopped by driver" note. Only the driver may stop.
+   */
+  async stopTurn(sessionId: string, user: UserRow): Promise<{ ok: boolean; error?: string }> {
+    const session = await this.deps.sessions.getSession(sessionId)
+    if (!session) return { ok: false, error: 'Session not found' }
+    if (session.driverUserId !== user.id) return { ok: false, error: 'Only the driver can stop the agent' }
+    const controller = this.aborters.get(sessionId)
+    if (!controller) return { ok: false, error: 'The agent is not working right now' }
+    controller.abort()
+    return { ok: true }
   }
 
   async handleUserMessage(
@@ -61,7 +78,9 @@ export class AgentOrchestrator {
     }
 
     this.runningTurns.add(sessionId)
-    const done = this.runTurn(session, user, text, opts?.suggestedBy)
+    const aborter = new AbortController()
+    this.aborters.set(sessionId, aborter)
+    const done = this.runTurn(session, user, text, aborter.signal, opts?.suggestedBy)
       .catch(async (err) => {
         console.error(`[agent] turn failed for session ${sessionId}:`, err)
         await sessions
@@ -73,6 +92,7 @@ export class AgentOrchestrator {
       })
       .finally(() => {
         this.runningTurns.delete(sessionId)
+        this.aborters.delete(sessionId)
       })
     return { ok: true, done }
   }
@@ -81,6 +101,7 @@ export class AgentOrchestrator {
     session: NonNullable<Awaited<ReturnType<SessionService['getSession']>>>,
     user: UserRow,
     text: string,
+    signal: AbortSignal,
     suggestedBy?: { userId: string; name: string },
   ): Promise<void> {
     const { sessions, projects, runtime } = this.deps
@@ -111,6 +132,7 @@ export class AgentOrchestrator {
       transcript: buildTranscript(priorEvents),
       fileTree: tools.listTree(),
       turnIndex: countAssistantTurns(priorEvents),
+      signal,
       executeTool: async (name, input) => {
         const execution = await tools.execute(name, input)
         await sessions.appendEvent(session.id, 'tool_result', {
@@ -124,33 +146,42 @@ export class AgentOrchestrator {
     }
 
     let sawError = false
-    for await (const item of provider.runTurn(ctx)) {
-      switch (item.kind) {
-        case 'delta':
-          sessions.publishTransient(session.id, 'assistant_delta', { text: item.text })
-          break
-        case 'tool_call':
-          if (!announcedTools) {
-            announcedTools = true
-            await sessions.appendEvent(session.id, 'status', { status: 'running_tools' })
-          }
-          await sessions.appendEvent(session.id, 'tool_call', { toolName: item.name, input: item.input })
-          break
-        case 'message_done':
-          if (item.fullText.trim()) {
-            await sessions.appendEvent(session.id, 'assistant_message', { text: item.fullText })
-          }
-          break
-        case 'error':
-          sawError = true
-          await sessions.appendEvent(session.id, 'status', { status: 'error', note: item.message })
-          break
+    try {
+      for await (const item of provider.runTurn(ctx)) {
+        switch (item.kind) {
+          case 'delta':
+            sessions.publishTransient(session.id, 'assistant_delta', { text: item.text })
+            break
+          case 'tool_call':
+            if (!announcedTools) {
+              announcedTools = true
+              await sessions.appendEvent(session.id, 'status', { status: 'running_tools' })
+            }
+            await sessions.appendEvent(session.id, 'tool_call', { toolName: item.name, input: item.input })
+            break
+          case 'message_done':
+            if (item.fullText.trim()) {
+              await sessions.appendEvent(session.id, 'assistant_message', { text: item.fullText })
+            }
+            break
+          case 'error':
+            sawError = true
+            await sessions.appendEvent(session.id, 'status', { status: 'error', note: item.message })
+            break
+        }
       }
+    } catch (err) {
+      // an abort surfaces here as the stream throws — swallow it (handled
+      // below); anything else is a real failure and re-thrown to the caller
+      if (!signal.aborted) throw err
     }
 
+    // commit whatever the agent managed to write, even on a stop
     await this.commitIfDirty(session, module, project, user, text)
 
-    if (!sawError) {
+    if (signal.aborted) {
+      await sessions.appendEvent(session.id, 'status', { status: 'idle', note: 'Stopped by driver' })
+    } else if (!sawError) {
       await sessions.appendEvent(session.id, 'status', { status: 'idle' })
     }
     await sessions.setSessionRowStatus(session.id, 'idle')
