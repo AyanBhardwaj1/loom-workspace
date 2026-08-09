@@ -6,6 +6,7 @@ import { Login } from './pages/Login'
 import { ModuleView } from './pages/ModuleView'
 import { ProjectDashboard } from './pages/ProjectDashboard'
 import { ProjectShell } from './pages/ProjectShell'
+import { ReplayView } from './pages/ReplayView'
 import { SessionView } from './pages/SessionView'
 import { useAuth } from './state/auth'
 
@@ -31,6 +32,7 @@ export default function App() {
   return (
     <Routes>
       <Route path="/" element={<Home />} />
+      <Route path="/replay/:sessionId" element={<ReplayView />} />
       <Route path="/p/:projectId" element={<ProjectShell />}>
         <Route index element={<ProjectDashboard />} />
         <Route path="m/:moduleId" element={<ModuleView />} />

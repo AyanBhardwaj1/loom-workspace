@@ -156,6 +156,13 @@ export function SessionView() {
                 End
               </button>
             )}
+            <Link
+              to={`/replay/${session.id}`}
+              className="btn-ghost text-xs"
+              title="Open the replay — scrub, play back, and fork from any point"
+            >
+              ⏵ Replay
+            </Link>
             <button
               onClick={() => setPreviewOpen((v) => !v)}
               className={previewOpen ? 'btn-secondary text-xs' : 'btn-ghost text-xs'}
