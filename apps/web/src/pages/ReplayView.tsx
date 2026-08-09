@@ -157,8 +157,8 @@ export function ReplayView() {
         emptyHint="Press play to replay this session from the beginning."
       />
 
-      {/* transport */}
-      <div className="border-t border-ink-700 bg-ink-900/80 px-5 py-3">
+      {/* transport — a tactile playback deck */}
+      <div className="border-t border-white/[0.07] bg-ink-950/70 px-5 py-3 backdrop-blur-xl">
         <div className="flex items-center gap-3">
           <button onClick={() => setPosition(0)} className="btn-ghost px-2 py-1 text-sm" title="Jump to start">
             ⏮
@@ -174,8 +174,22 @@ export function ReplayView() {
             ⏭
           </button>
 
-          {/* scrubber with commit markers */}
-          <div className="relative mx-2 flex-1">
+          {/* the replay thread: a filled track + commit beads */}
+          <div className="relative mx-2 h-6 flex-1">
+            <div className="absolute inset-x-0 top-1/2 h-1 -translate-y-1/2 overflow-hidden rounded-full bg-white/[0.08]">
+              <div
+                className="h-full rounded-full bg-gradient-to-r from-accent to-thread-tool transition-[width] duration-100"
+                style={{ width: `${total > 0 ? (position / total) * 100 : 0}%` }}
+              />
+            </div>
+            {commitMarkers.map((m, i) => (
+              <span
+                key={i}
+                title={m.label}
+                className="absolute top-1/2 h-2 w-2 -translate-x-1/2 -translate-y-1/2 rounded-full bg-thread-commit"
+                style={{ left: `${total > 0 ? (m.index / total) * 100 : 0}%`, boxShadow: '0 0 6px 0 #f4c95d' }}
+              />
+            ))}
             <input
               type="range"
               min={0}
@@ -185,33 +199,27 @@ export function ReplayView() {
                 setPlaying(false)
                 setPosition(Number(e.target.value))
               }}
-              className="w-full accent-accent"
+              className="absolute inset-0 h-full w-full cursor-pointer appearance-none bg-transparent accent-accent [&::-webkit-slider-thumb]:h-3.5 [&::-webkit-slider-thumb]:w-3.5 [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-accent-bright [&::-webkit-slider-thumb]:shadow-[0_0_10px_0_rgba(139,124,246,0.7)]"
             />
-            <div className="pointer-events-none absolute inset-x-0 top-1/2 -z-10 h-0">
-              {commitMarkers.map((m, i) => (
-                <span
-                  key={i}
-                  title={m.label}
-                  className="absolute h-2 w-1 -translate-x-1/2 -translate-y-1/2 rounded-full bg-emerald-400/80"
-                  style={{ left: `${total > 0 ? (m.index / total) * 100 : 0}%` }}
-                />
-              ))}
-            </div>
           </div>
 
-          <span className="w-14 shrink-0 text-right font-mono text-[11px] text-ink-400">
+          <span className="w-14 shrink-0 text-right font-mono text-[11px] tabular-nums text-ink-400">
             {position}/{total}
           </span>
 
-          {/* speed */}
-          <div className="flex overflow-hidden rounded-lg border border-ink-600">
+          {/* segmented speed control */}
+          <div className="relative flex rounded-lg border border-white/[0.1] bg-black/25 p-0.5">
+            <span
+              className="absolute inset-y-0.5 rounded-[6px] bg-accent transition-transform duration-200 ease-[cubic-bezier(0.16,0.8,0.3,1)]"
+              style={{ width: `calc(${100 / SPEEDS.length}% - 1px)`, transform: `translateX(${SPEEDS.indexOf(speed) * 100}%)` }}
+            />
             {SPEEDS.map((sp) => (
               <button
                 key={sp}
                 onClick={() => setSpeed(sp)}
                 className={clsx(
-                  'px-2 py-1 text-[11px]',
-                  speed === sp ? 'bg-accent text-ink-950' : 'bg-ink-850 text-ink-300 hover:text-ink-100',
+                  'relative z-10 px-2 py-1 font-mono text-[11px] transition-colors',
+                  speed === sp ? 'text-ink-950' : 'text-ink-300 hover:text-ink-100',
                 )}
               >
                 {sp}×
@@ -229,10 +237,11 @@ export function ReplayView() {
           </button>
         </div>
         {scrubEvent && (
-          <div className="mt-1.5 flex items-center gap-2 text-[11px] text-ink-400">
+          <div className="mt-2 flex items-center gap-2 text-[11px] text-ink-400">
             <Avatar name={s.driverName} color={s.driverAvatarColor} size="xs" />
             <span className="truncate">
-              at #{position}: {describeEvent(scrubEvent)}
+              <span className="micro-label mr-1.5">#{position}</span>
+              {describeEvent(scrubEvent)}
             </span>
           </div>
         )}

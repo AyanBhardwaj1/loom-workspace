@@ -44,14 +44,19 @@ export function HistoryPage() {
             <button onClick={() => setMainPreview(true)} className="btn-secondary text-xs" title="Preview the merged main product">
               ▶ Preview main
             </button>
-            <div className="flex overflow-hidden rounded-xl border border-ink-600">
+            {/* segmented control with a sliding indicator */}
+            <div className="relative flex rounded-xl border border-white/[0.1] bg-black/25 p-0.5">
+              <span
+                className="absolute inset-y-0.5 w-[calc(50%-2px)] rounded-[10px] bg-accent transition-transform duration-200 ease-[cubic-bezier(0.16,0.8,0.3,1)]"
+                style={{ transform: lens === 'technical' ? 'translateX(100%)' : 'translateX(0)' }}
+              />
               {(['simple', 'technical'] as const).map((l) => (
                 <button
                   key={l}
                   onClick={() => setLens(l)}
                   className={clsx(
-                    'px-3.5 py-1.5 text-xs font-medium capitalize transition-colors',
-                    lens === l ? 'bg-accent text-ink-950' : 'bg-ink-850 text-ink-300 hover:text-ink-100',
+                    'relative z-10 px-3.5 py-1.5 text-xs font-medium capitalize transition-colors duration-200',
+                    lens === l ? 'text-ink-950' : 'text-ink-300 hover:text-ink-100',
                   )}
                 >
                   {l}
@@ -78,43 +83,63 @@ export function HistoryPage() {
             />
           </div>
         ) : (
-          <ol className="relative mt-6 space-y-3 border-l border-ink-700 pl-6">
-            {changes.map((c) => (
-              <li key={c.id} className="relative">
-                <span
-                  className="absolute -left-[1.72rem] top-4 h-2.5 w-2.5 rounded-full border-2 border-ink-950"
-                  style={{ backgroundColor: c.authorAvatarColor }}
-                />
-                <button
-                  onClick={() => setSelected(c)}
-                  className={clsx(
-                    'card w-full p-4 text-left transition-colors hover:border-accent',
-                    feed.freshChangeIds.has(c.id) && 'animate-highlight',
-                  )}
-                >
-                  <div className="text-sm leading-relaxed text-ink-100">
-                    {lens === 'simple' ? c.plainExplanation : c.technicalSummary}
-                  </div>
-                  <div className="mt-1 text-xs text-ink-400">
-                    {lens === 'simple' ? c.technicalSummary : c.plainExplanation}
-                  </div>
-                  <div className="mt-2.5 flex flex-wrap items-center gap-2">
-                    <Avatar name={c.authorName} color={c.authorAvatarColor} size="xs" />
-                    <span className="text-[11px] text-ink-300">{c.authorName}</span>
-                    {c.moduleName && (
-                      <span className="chip text-[10px]">
-                        {c.moduleEmoji} {c.moduleName}
-                      </span>
+          <ol className="relative mt-6 space-y-3 pl-6">
+            {/* the braid: a vertical thread the change nodes hang from */}
+            <div
+              className="pointer-events-none absolute bottom-3 left-[7px] top-3 w-px"
+              style={{ background: 'linear-gradient(to bottom, transparent, rgba(139,124,246,0.3), rgba(56,214,224,0.18), transparent)' }}
+            />
+            {changes.map((c) => {
+              const onMain = c.branchName === 'main'
+              return (
+                <li key={c.id} className="relative">
+                  <span
+                    className={clsx(
+                      'absolute -left-[1.68rem] top-[1.15rem] rounded-full border-2 border-ink-950',
+                      onMain ? 'h-3 w-3' : 'h-2.5 w-2.5',
                     )}
-                    <span className="mono-chip">{c.branchName === 'main' ? 'main' : c.branchName.replace(/^session\//, '')}</span>
-                    <span className="text-[11px] text-ink-400">
-                      {c.filesChanged.length} file{c.filesChanged.length === 1 ? '' : 's'}
-                    </span>
-                    <span className="ml-auto text-[11px] text-ink-400">{timeAgo(c.createdAt, now)}</span>
-                  </div>
-                </button>
-              </li>
-            ))}
+                    style={{
+                      backgroundColor: onMain ? '#f4c95d' : c.authorAvatarColor,
+                      boxShadow: `0 0 8px 0 ${onMain ? '#f4c95d' : c.authorAvatarColor}`,
+                    }}
+                    title={onMain ? 'on main' : c.branchName}
+                  />
+                  <button
+                    onClick={() => setSelected(c)}
+                    className={clsx(
+                      'glow-edge panel panel-hover w-full p-4 pl-5 text-left transition-all duration-150 hover:-translate-y-px',
+                      feed.freshChangeIds.has(c.id) && 'animate-highlight',
+                    )}
+                    style={{ ['--edge' as string]: onMain ? '#f4c95d' : c.authorAvatarColor }}
+                  >
+                    <div className="text-sm leading-relaxed text-ink-100">
+                      {lens === 'simple' ? c.plainExplanation : c.technicalSummary}
+                    </div>
+                    <div className="mt-1 font-mono text-xs text-ink-400">
+                      {lens === 'simple' ? c.technicalSummary : c.plainExplanation}
+                    </div>
+                    <div className="mt-2.5 flex flex-wrap items-center gap-2">
+                      <Avatar name={c.authorName} color={c.authorAvatarColor} size="xs" />
+                      <span className="text-[11px] text-ink-300">{c.authorName}</span>
+                      {c.moduleName && (
+                        <span className="chip text-[10px]">
+                          {c.moduleEmoji} {c.moduleName}
+                        </span>
+                      )}
+                      <span
+                        className={clsx('mono-chip', onMain && '!border-thread-commit/30 !text-thread-commit')}
+                      >
+                        {onMain ? '⇥ main' : `⑂ ${c.branchName.replace(/^session\//, '')}`}
+                      </span>
+                      <span className="micro-label">
+                        {c.filesChanged.length} file{c.filesChanged.length === 1 ? '' : 's'}
+                      </span>
+                      <span className="ml-auto font-mono text-[11px] text-ink-400">{timeAgo(c.createdAt, now)}</span>
+                    </div>
+                  </button>
+                </li>
+              )
+            })}
           </ol>
         )}
       </div>
@@ -171,17 +196,23 @@ function BranchesStrip({ projectId }: { projectId: string }) {
   }
 
   return (
-    <section className="card p-4">
+    <section className="panel p-4">
       <div className="mb-2.5 flex items-center gap-2">
-        <h2 className="text-xs font-semibold uppercase tracking-wider text-ink-300">Session branches</h2>
-        <span className="text-[10px] text-ink-400">work that hasn't been folded into the main version yet</span>
+        <span className="micro-label">session branches</span>
+        <span className="text-[10px] text-ink-400">— work not yet folded into the main version</span>
       </div>
       <div className="flex gap-2.5 overflow-x-auto pb-1">
         {branches.map((b) => (
-          <div key={b.branchName} className="min-w-[15rem] shrink-0 rounded-xl border border-ink-700 bg-ink-850 p-3">
+          <div
+            key={b.branchName}
+            className="glow-edge min-w-[15rem] shrink-0 rounded-xl border border-white/[0.08] bg-white/[0.02] p-3 pl-4"
+            style={{ ['--edge' as string]: b.driverAvatarColor ?? '#8b7cf6' }}
+          >
             <div className="flex items-center gap-2">
               {b.driverName && <Avatar name={b.driverName} color={b.driverAvatarColor ?? '#8b7cf6'} size="xs" />}
-              <span className="truncate font-mono text-[11px] text-ink-200">{b.branchName.replace(/^session\//, '')}</span>
+              <span className="truncate font-mono text-[11px] tracking-tight text-ink-200">
+                ⑂ {b.branchName.replace(/^session\//, '')}
+              </span>
             </div>
             <div className="mt-1.5 text-[11px] text-ink-300">
               {b.moduleEmoji} {b.moduleName ?? 'unknown module'}
@@ -189,12 +220,12 @@ function BranchesStrip({ projectId }: { projectId: string }) {
             <div className="mt-1 text-[11px] text-ink-400">
               {b.aheadOfMain > 0 ? (
                 <>
-                  <span className="text-accent-soft">{b.aheadOfMain}</span> change{b.aheadOfMain === 1 ? '' : 's'} ahead of main
+                  <span className="font-mono text-accent-soft">{b.aheadOfMain}</span> change{b.aheadOfMain === 1 ? '' : 's'} ahead
                 </>
               ) : (
                 'nothing new'
               )}
-              {b.behindMain > 0 && <span> · {b.behindMain} behind</span>}
+              {b.behindMain > 0 && <span className="font-mono"> · {b.behindMain} behind</span>}
             </div>
             {b.aheadOfMain > 0 && (
               <button
