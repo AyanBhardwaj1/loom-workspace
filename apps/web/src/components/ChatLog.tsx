@@ -1,7 +1,7 @@
 import { clsx } from 'clsx'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import type { AgentActivityStatus, SessionEvent } from '@loom/shared'
-import { EventRow, toDisplayItems } from './EventRow'
+import { EventRow, toDisplayItems, type RowActions } from './EventRow'
 
 export function ChatLog({
   events,
@@ -11,6 +11,7 @@ export function ChatLog({
   driverColor,
   compact = false,
   onFork,
+  actions,
   emptyHint,
 }: {
   events: SessionEvent[]
@@ -20,6 +21,7 @@ export function ChatLog({
   driverColor: string
   compact?: boolean
   onFork?: (eventId: string) => void
+  actions?: RowActions
   emptyHint?: string
 }) {
   const containerRef = useRef<HTMLDivElement>(null)
@@ -68,6 +70,7 @@ export function ChatLog({
             driverName={driverName}
             driverColor={driverColor}
             onFork={onFork}
+            actions={actions}
           />
         ))}
         {streamingText && (

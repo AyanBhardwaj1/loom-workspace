@@ -409,6 +409,44 @@ export class SessionService {
     return session
   }
 
+  // -------------------------------------------------------------------------
+  // Spectator suggestions (append-only; the driver is still the single writer)
+  // -------------------------------------------------------------------------
+
+  async addSuggestion(sessionId: string, suggester: UserRow, text: string): Promise<SessionEvent> {
+    return this.appendEvent(sessionId, 'suggestion', {
+      suggestionId: ulid(),
+      text,
+      suggesterUserId: suggester.id,
+      suggesterName: suggester.name,
+      suggesterColor: suggester.avatarColor,
+    })
+  }
+
+  /** The suggestion's payload if it exists AND has not been resolved yet, else null. */
+  async getPendingSuggestion(
+    sessionId: string,
+    suggestionId: string,
+  ): Promise<EventPayloadOf<'suggestion'> | null> {
+    const events = await this.getEvents(sessionId, 0)
+    let found: EventPayloadOf<'suggestion'> | null = null
+    let decided = false
+    for (const e of events) {
+      if (e.type === 'suggestion' && e.payload.suggestionId === suggestionId) found = e.payload
+      if (e.type === 'suggestion_decision' && e.payload.suggestionId === suggestionId) decided = true
+    }
+    return found && !decided ? found : null
+  }
+
+  async recordSuggestionDecision(
+    sessionId: string,
+    suggestionId: string,
+    decision: 'accepted' | 'dismissed',
+    decidedByName: string,
+  ): Promise<SessionEvent> {
+    return this.appendEvent(sessionId, 'suggestion_decision', { suggestionId, decision, decidedByName })
+  }
+
   async endSession(sessionId: string): Promise<void> {
     const { db, t } = this.dbh
     const session = await this.getSession(sessionId)

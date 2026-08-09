@@ -23,6 +23,8 @@ export function SessionView() {
   const [forking, setForking] = useState(false)
   const [ending, setEnding] = useState(false)
   const [serverError, setServerError] = useState<string | null>(null)
+  const [suggestText, setSuggestText] = useState('')
+  const [suggestSent, setSuggestSent] = useState(false)
 
   // presence: tell the hub which session we're actually looking at
   useEffect(() => {
@@ -199,6 +201,11 @@ export function SessionView() {
           driverName={session.driverName}
           driverColor={session.driverAvatarColor}
           onFork={(eventId) => void fork(eventId)}
+          actions={{
+            isDriver,
+            onResolveSuggestion: (suggestionId, decision) =>
+              wsClient.resolveSuggestion(session.id, suggestionId, decision),
+          }}
           emptyHint={
             isDriver
               ? 'Tell the agent what to build — it reads and writes this project’s real code.'
@@ -211,11 +218,39 @@ export function SessionView() {
           <Composer sessionId={session.id} agentStatus={stream.agentStatus} />
         ) : (
           <div className="border-t border-ink-700 bg-ink-900/80 px-5 py-3.5">
+            {!isEnded && (
+              <form
+                onSubmit={(e) => {
+                  e.preventDefault()
+                  const text = suggestText.trim()
+                  if (!text) return
+                  if (wsClient.suggest(session.id, text)) {
+                    setSuggestText('')
+                    setSuggestSent(true)
+                    setTimeout(() => setSuggestSent(false), 2500)
+                  }
+                }}
+                className="mb-2.5 flex items-end gap-2"
+              >
+                <input
+                  value={suggestText}
+                  onChange={(e) => setSuggestText(e.target.value)}
+                  placeholder={`Suggest a next step to ${session.driverName} — they can accept it with one click…`}
+                  className="input py-2 text-sm"
+                  maxLength={2000}
+                />
+                <button type="submit" disabled={!suggestText.trim()} className="btn-secondary shrink-0 text-xs">
+                  💡 Suggest
+                </button>
+              </form>
+            )}
             <div className="flex items-center gap-3">
               <div className="text-xs text-ink-300">
                 {isEnded
                   ? 'Session ended.'
-                  : `You're spectating — ${session.driverName} is driving.`}{' '}
+                  : suggestSent
+                    ? `Sent — ${session.driverName} sees your suggestion in their chat.`
+                    : `You're spectating — ${session.driverName} is driving.`}{' '}
                 Fork to get {isEnded ? 'its' : 'their'} full conversation and code as your own session.
               </div>
               <button onClick={() => void fork()} disabled={forking} className="btn-primary ml-auto shrink-0 text-xs">

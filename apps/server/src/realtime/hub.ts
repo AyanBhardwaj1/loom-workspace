@@ -170,6 +170,42 @@ export class Hub {
         if (!res.ok) this.sendError(conn, 'rejected', res.error ?? 'Message rejected')
         return
       }
+      case 'suggest': {
+        const session = await sessions.getSession(msg.sessionId)
+        if (!session) return this.sendError(conn, 'not_found', 'Session not found')
+        if (!(await projects.isMember(session.projectId, conn.user.id))) {
+          return this.sendError(conn, 'forbidden', 'You are not a member of this project')
+        }
+        if (session.status === 'ended') return this.sendError(conn, 'rejected', 'This session has ended')
+        if (session.driverUserId === conn.user.id) {
+          // the driver just types — suggestions are the spectator's channel
+          return this.sendError(conn, 'rejected', 'You are driving this session')
+        }
+        await sessions.addSuggestion(msg.sessionId, conn.user, msg.text)
+        return
+      }
+      case 'resolve_suggestion': {
+        const session = await sessions.getSession(msg.sessionId)
+        if (!session) return this.sendError(conn, 'not_found', 'Session not found')
+        if (session.driverUserId !== conn.user.id) {
+          return this.sendError(conn, 'forbidden', 'Only the driver can resolve suggestions')
+        }
+        const pending = await sessions.getPendingSuggestion(msg.sessionId, msg.suggestionId)
+        if (!pending) return this.sendError(conn, 'rejected', 'That suggestion was already handled')
+        if (msg.decision === 'dismissed') {
+          await sessions.recordSuggestionDecision(msg.sessionId, msg.suggestionId, 'dismissed', conn.user.name)
+          return
+        }
+        // accepted: only the driver's accept turns a suggestion into agent work.
+        // start the turn first; record the decision only if it actually started,
+        // so a busy session doesn't leave a suggestion marked accepted-but-idle.
+        const res = await orchestrator.handleUserMessage(msg.sessionId, conn.user, pending.text, {
+          suggestedBy: { userId: pending.suggesterUserId, name: pending.suggesterName },
+        })
+        if (!res.ok) return this.sendError(conn, 'rejected', res.error ?? 'Could not run the suggestion')
+        await sessions.recordSuggestionDecision(msg.sessionId, msg.suggestionId, 'accepted', conn.user.name)
+        return
+      }
       case 'catchup': {
         const session = await sessions.getSession(msg.sessionId)
         if (!session) return this.sendError(conn, 'not_found', 'Session not found')

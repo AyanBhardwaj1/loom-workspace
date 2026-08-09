@@ -26,7 +26,12 @@ export type ModuleStatus = z.infer<typeof moduleStatusSchema>
 // Event payloads
 // ---------------------------------------------------------------------------
 
-export const userMessagePayload = z.object({ text: z.string() })
+export const userMessagePayload = z.object({
+  text: z.string(),
+  /** When the driver accepted a spectator's suggestion, credit them here. */
+  suggestedByName: z.string().optional(),
+  suggestedByUserId: z.string().optional(),
+})
 export const assistantDeltaPayload = z.object({ text: z.string() })
 export const assistantMessagePayload = z.object({ text: z.string() })
 export const toolCallPayload = z.object({
@@ -60,6 +65,20 @@ export const forkMarkerPayload = z.object({
   childSessionId: z.string(),
   byUserName: z.string(),
 })
+/** A spectator proposes a next step; only the driver can accept it into work. */
+export const suggestionPayload = z.object({
+  suggestionId: z.string(),
+  text: z.string(),
+  suggesterUserId: z.string(),
+  suggesterName: z.string(),
+  suggesterColor: z.string(),
+})
+/** The driver's resolution of a suggestion (append-only; never mutates the suggestion). */
+export const suggestionDecisionPayload = z.object({
+  suggestionId: z.string(),
+  decision: z.enum(['accepted', 'dismissed']),
+  decidedByName: z.string(),
+})
 
 // ---------------------------------------------------------------------------
 // Event envelope (discriminated union on `type`)
@@ -85,6 +104,8 @@ export const sessionEventSchema = z.discriminatedUnion('type', [
   z.object({ ...base, type: z.literal('commit'), payload: commitPayload }),
   z.object({ ...base, type: z.literal('status'), payload: statusPayload }),
   z.object({ ...base, type: z.literal('fork_marker'), payload: forkMarkerPayload }),
+  z.object({ ...base, type: z.literal('suggestion'), payload: suggestionPayload }),
+  z.object({ ...base, type: z.literal('suggestion_decision'), payload: suggestionDecisionPayload }),
 ])
 
 export type SessionEvent = z.infer<typeof sessionEventSchema>
@@ -103,6 +124,8 @@ export const eventPayloadSchemas = {
   commit: commitPayload,
   status: statusPayload,
   fork_marker: forkMarkerPayload,
+  suggestion: suggestionPayload,
+  suggestion_decision: suggestionDecisionPayload,
 } as const
 
 /** Event types that are persisted to the DB (everything except assistant_delta). */
@@ -115,6 +138,8 @@ export const PERSISTED_EVENT_TYPES: SessionEventType[] = [
   'commit',
   'status',
   'fork_marker',
+  'suggestion',
+  'suggestion_decision',
 ]
 
 /** A short human line describing an event, for dashboard gists and activity feeds. */
@@ -146,6 +171,10 @@ export function eventGist(event: SessionEvent): string {
           : event.payload.note ?? event.payload.status
     case 'fork_marker':
       return `${event.payload.byUserName} forked from here`
+    case 'suggestion':
+      return `${event.payload.suggesterName} suggested: “${truncate(event.payload.text, 56)}”`
+    case 'suggestion_decision':
+      return `suggestion ${event.payload.decision}`
   }
 }
 

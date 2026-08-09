@@ -43,7 +43,12 @@ export class AgentOrchestrator {
     return this.runningTurns.has(sessionId)
   }
 
-  async handleUserMessage(sessionId: string, user: UserRow, text: string): Promise<TurnStartResult> {
+  async handleUserMessage(
+    sessionId: string,
+    user: UserRow,
+    text: string,
+    opts?: { suggestedBy?: { userId: string; name: string } },
+  ): Promise<TurnStartResult> {
     const { sessions } = this.deps
     const session = await sessions.getSession(sessionId)
     if (!session) return { ok: false, error: 'Session not found' }
@@ -56,7 +61,7 @@ export class AgentOrchestrator {
     }
 
     this.runningTurns.add(sessionId)
-    const done = this.runTurn(session, user, text)
+    const done = this.runTurn(session, user, text, opts?.suggestedBy)
       .catch(async (err) => {
         console.error(`[agent] turn failed for session ${sessionId}:`, err)
         await sessions
@@ -76,6 +81,7 @@ export class AgentOrchestrator {
     session: NonNullable<Awaited<ReturnType<SessionService['getSession']>>>,
     user: UserRow,
     text: string,
+    suggestedBy?: { userId: string; name: string },
   ): Promise<void> {
     const { sessions, projects, runtime } = this.deps
     const provider = runtime.provider
@@ -85,7 +91,10 @@ export class AgentOrchestrator {
     if (!module || !project) throw new Error('Module or project missing')
 
     await sessions.setSessionRowStatus(session.id, 'active')
-    await sessions.appendEvent(session.id, 'user_message', { text })
+    await sessions.appendEvent(session.id, 'user_message', {
+      text,
+      ...(suggestedBy ? { suggestedByName: suggestedBy.name, suggestedByUserId: suggestedBy.userId } : {}),
+    })
     await sessions.appendEvent(session.id, 'status', { status: 'thinking' })
 
     const priorEvents = await sessions.getEvents(session.id, 0)

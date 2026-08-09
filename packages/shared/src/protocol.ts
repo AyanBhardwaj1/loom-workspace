@@ -19,6 +19,15 @@ export const clientMessageSchema = z.discriminatedUnion('t', [
   z.object({ t: z.literal('unsub_project'), projectId: z.string() }),
   /** Drive your own session. Server rejects if you are not the driver. */
   z.object({ t: z.literal('user_message'), sessionId: z.string(), text: z.string().min(1).max(20000) }),
+  /** Spectator proposes a next step. Any project member except the driver. */
+  z.object({ t: z.literal('suggest'), sessionId: z.string(), text: z.string().min(1).max(2000) }),
+  /** Driver accepts (→ runs a turn credited to the suggester) or dismisses. */
+  z.object({
+    t: z.literal('resolve_suggestion'),
+    sessionId: z.string(),
+    suggestionId: z.string(),
+    decision: z.enum(['accepted', 'dismissed']),
+  }),
   /** Request all persisted events with seq > afterSeq. */
   z.object({ t: z.literal('catchup'), sessionId: z.string(), afterSeq: z.number().int().min(0) }),
   /**

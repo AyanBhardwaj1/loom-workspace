@@ -126,6 +126,21 @@ class WSClient {
     return true
   }
 
+  /** Spectator proposes a next step (server rejects if you're the driver). */
+  suggest(sessionId: string, text: string): boolean {
+    if (!this.isOpen()) {
+      this.connect()
+      return false
+    }
+    this.raw({ t: 'suggest', sessionId, text })
+    return true
+  }
+
+  /** Driver accepts or dismisses a spectator suggestion. */
+  resolveSuggestion(sessionId: string, suggestionId: string, decision: 'accepted' | 'dismissed'): void {
+    this.raw({ t: 'resolve_suggestion', sessionId, suggestionId, decision })
+  }
+
   catchup(sessionId: string, afterSeq: number): void {
     this.raw({ t: 'catchup', sessionId, afterSeq })
   }

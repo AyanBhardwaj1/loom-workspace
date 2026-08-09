@@ -16,10 +16,20 @@ export type DisplayItem =
   | { kind: 'commit'; event: SessionEventOf<'commit'> }
   | { kind: 'note'; event: SessionEventOf<'status'> }
   | { kind: 'fork'; event: SessionEventOf<'fork_marker'> }
+  | {
+      kind: 'suggestion'
+      event: SessionEventOf<'suggestion'>
+      decision: 'accepted' | 'dismissed' | null
+    }
 
 export function toDisplayItems(events: SessionEvent[]): DisplayItem[] {
   const items: DisplayItem[] = []
   const openToolChips: Array<Extract<DisplayItem, { kind: 'tool' }>> = []
+  // decisions may arrive after their suggestion; resolve in a first pass
+  const decisions = new Map<string, 'accepted' | 'dismissed'>()
+  for (const e of events) {
+    if (e.type === 'suggestion_decision') decisions.set(e.payload.suggestionId, e.payload.decision)
+  }
   for (const e of events) {
     switch (e.type) {
       case 'user_message':
@@ -61,6 +71,12 @@ export function toDisplayItems(events: SessionEvent[]): DisplayItem[] {
       case 'fork_marker':
         items.push({ kind: 'fork', event: e })
         break
+      case 'suggestion':
+        items.push({ kind: 'suggestion', event: e, decision: decisions.get(e.payload.suggestionId) ?? null })
+        break
+      case 'suggestion_decision':
+        // folded into its suggestion item above
+        break
       default:
         break
     }
@@ -77,12 +93,19 @@ const TOOL_ICONS: Record<string, string> = {
   run_command: '▶',
 }
 
+export interface RowActions {
+  /** current viewer is the session driver (can accept/dismiss suggestions) */
+  isDriver?: boolean
+  onResolveSuggestion?: (suggestionId: string, decision: 'accepted' | 'dismissed') => void
+}
+
 export function EventRow({
   item,
   compact = false,
   driverName,
   driverColor,
   onFork,
+  actions,
 }: {
   item: DisplayItem
   compact?: boolean
@@ -90,13 +113,14 @@ export function EventRow({
   driverColor: string
   /** when set, rows expose a "⑂ fork here" hover affordance */
   onFork?: (eventId: string) => void
+  actions?: RowActions
 }) {
   const forkId =
     item.kind === 'tool' ? item.call.id : item.kind === 'fork' ? item.event.id : item.kind === 'note' ? item.event.id : item.event.id
 
   return (
     <div className={clsx('group relative', compact ? 'py-0.5' : 'py-1')}>
-      {onFork && item.kind !== 'fork' && (
+      {onFork && item.kind !== 'fork' && item.kind !== 'suggestion' && (
         <button
           onClick={() => onFork(forkId)}
           title="Fork the session from this point"
@@ -105,7 +129,7 @@ export function EventRow({
           ⑂ fork here
         </button>
       )}
-      <RowBody item={item} compact={compact} driverName={driverName} driverColor={driverColor} />
+      <RowBody item={item} compact={compact} driverName={driverName} driverColor={driverColor} actions={actions} />
     </div>
   )
 }
@@ -115,14 +139,17 @@ function RowBody({
   compact,
   driverName,
   driverColor,
+  actions,
 }: {
   item: DisplayItem
   compact: boolean
   driverName: string
   driverColor: string
+  actions?: RowActions
 }) {
   switch (item.kind) {
-    case 'user':
+    case 'user': {
+      const via = item.event.payload.suggestedByName
       return (
         <div className="flex justify-end">
           <div
@@ -134,12 +161,14 @@ function RowBody({
             {!compact && (
               <div className="mb-0.5 text-[11px] font-semibold" style={{ color: driverColor }}>
                 {driverName}
+                {via && <span className="ml-1 font-normal text-ink-400">· 💡 {via} suggested</span>}
               </div>
             )}
             {item.event.payload.text}
           </div>
         </div>
       )
+    }
     case 'assistant':
       return (
         <div className={clsx('whitespace-pre-wrap leading-relaxed text-ink-100', compact ? 'text-xs' : 'text-sm')}>
@@ -174,7 +203,63 @@ function RowBody({
           <div className="h-px flex-1 bg-gradient-to-l from-transparent via-accent/40 to-accent/40" />
         </div>
       )
+    case 'suggestion':
+      return <SuggestionCard item={item} compact={compact} actions={actions} />
   }
+}
+
+function SuggestionCard({
+  item,
+  compact,
+  actions,
+}: {
+  item: Extract<DisplayItem, { kind: 'suggestion' }>
+  compact: boolean
+  actions?: RowActions
+}) {
+  const p = item.event.payload
+  const canResolve = actions?.isDriver && item.decision === null && actions.onResolveSuggestion
+  return (
+    <div
+      className={clsx(
+        'my-1.5 rounded-xl border border-l-2 px-3.5 py-2.5',
+        item.decision === 'dismissed'
+          ? 'border-ink-700 border-l-ink-500 bg-ink-850/40 opacity-70'
+          : 'border-amber-500/30 border-l-amber-400 bg-amber-500/[0.06]',
+      )}
+    >
+      <div className="flex items-center gap-2">
+        <span
+          className="flex h-5 w-5 items-center justify-center rounded-full text-[9px] font-semibold text-ink-950"
+          style={{ backgroundColor: p.suggesterColor }}
+        >
+          {p.suggesterName.slice(0, 1).toUpperCase()}
+        </span>
+        <span className="text-[11px] text-ink-300">
+          💡 <span className="font-medium text-ink-100">{p.suggesterName}</span> suggests
+        </span>
+        {item.decision === 'accepted' && <span className="chip text-[10px] text-emerald-300">✓ accepted</span>}
+        {item.decision === 'dismissed' && <span className="chip text-[10px] text-ink-400">dismissed</span>}
+      </div>
+      <div className={clsx('mt-1.5 whitespace-pre-wrap text-ink-100', compact ? 'text-xs' : 'text-sm')}>{p.text}</div>
+      {canResolve && (
+        <div className="mt-2 flex gap-2">
+          <button
+            onClick={() => actions!.onResolveSuggestion!(p.suggestionId, 'accepted')}
+            className="btn-primary px-3 py-1 text-xs"
+          >
+            ✓ Accept &amp; run
+          </button>
+          <button
+            onClick={() => actions!.onResolveSuggestion!(p.suggestionId, 'dismissed')}
+            className="btn-secondary px-3 py-1 text-xs"
+          >
+            Dismiss
+          </button>
+        </div>
+      )}
+    </div>
+  )
 }
 
 /** minimal inline renderer: `code` spans only, everything else verbatim */
