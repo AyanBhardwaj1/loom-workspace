@@ -307,19 +307,24 @@ export class SessionService {
     }
     const inCut = allEvents.filter((e) => e.seq !== null && e.seq <= cutoffSeq)
     const cutoffEvent = inCut[inCut.length - 1] ?? null
-    const copied = inCut.filter(
-      (e) =>
-        // the source's lifecycle notes don't belong in the fork's story, and
-        // transient in-flight statuses (thinking/running_tools) must not be
-        // copied: the fork's LAST status event drives its composer state, and
-        // a copied "thinking" would brick it forever
-        !(
-          e.type === 'status' &&
-          (e.payload.note === 'Session ended' ||
-            e.payload.status === 'thinking' ||
-            e.payload.status === 'running_tools')
-        ),
-    )
+    const copied = inCut.filter((e) => {
+      // usage events are the SOURCE's token bill — copying them would
+      // double-count spend in the fork's cost chip and the module total
+      if (e.type === 'usage') return false
+      // the source's lifecycle notes don't belong in the fork's story, and
+      // transient in-flight statuses (thinking/running_tools) must not be
+      // copied: the fork's LAST status event drives its composer state, and
+      // a copied "thinking" would brick it forever
+      if (
+        e.type === 'status' &&
+        (e.payload.note === 'Session ended' ||
+          e.payload.status === 'thinking' ||
+          e.payload.status === 'running_tools')
+      ) {
+        return false
+      }
+      return true
+    })
 
     // branch point: last commit event at-or-before the cutoff. With no commit
     // in the slice, DON'T use the source branch's live HEAD — later turns may

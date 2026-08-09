@@ -54,6 +54,8 @@ describe('fork mechanics', () => {
       .slice(0, cutoffIndex + 1)
       .filter(
         (e) =>
+          // usage events are the source's token bill and are NOT copied into a fork
+          e.type !== 'usage' &&
           !(e.type === 'status' && (e.payload.status === 'thinking' || e.payload.status === 'running_tools')),
       )
     expect(forkEvents.length).toBe(expectedCopied.length + 2)
@@ -103,6 +105,26 @@ describe('fork mechanics', () => {
     // fork commit authored by Bob, source's newest by Ada
     expect(forkLog[0]!.authorName).toBe('Bob')
     expect(sourceLog[0]!.authorName).toBe('Ada')
+  })
+
+  it('does NOT copy the source usage events into the fork (no double-billing)', async () => {
+    const { services } = ctx
+    const ada = await makeUser(services, 'Ada', 'ada-usage@fork.dev')
+    const bob = await makeUser(services, 'Bob', 'bob-usage@fork.dev')
+    const project = await services.projects.createProject('ForkBill', '', ada)
+    const modules = await services.projects.listModules(project.id)
+    const session = await services.sessions.createSession(modules[0]!.id, ada)
+    await (await services.orchestrator.handleUserMessage(session.id, ada, 'Build the hero section')).done
+
+    const sourceEvents = await services.sessions.getEvents(session.id)
+    expect(sourceEvents.some((e) => e.type === 'usage')).toBe(true) // source recorded usage
+
+    const fork = await services.sessions.forkSession(session.id, bob)
+    const forkEvents = await services.sessions.getEvents(fork.id)
+    // the fork inherits NO usage events — its cost starts at zero
+    expect(forkEvents.some((e) => e.type === 'usage')).toBe(false)
+    const totals = await services.sessions.usageTotalsForSessions([fork.id])
+    expect(totals.get(fork.id)?.tokens ?? 0).toBe(0)
   })
 
   it('forks with no atEventId default to the latest event', async () => {

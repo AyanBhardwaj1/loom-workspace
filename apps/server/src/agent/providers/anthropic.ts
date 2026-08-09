@@ -38,9 +38,15 @@ export class AnthropicAgentProvider implements AgentProvider {
     ]
 
     const fullText: string[] = []
+    // partial usage for the in-flight round, so a Stop mid-stream still bills
+    // what the provider already charged (the normal path uses finalMessage below)
+    let pendingInput = 0
+    let pendingOutput = 0
     try {
       for (let round = 0; round < MAX_TOOL_ROUNDS; round++) {
         if (ctx.signal.aborted) break
+        pendingInput = 0
+        pendingOutput = 0
         const stream = this.client.messages.stream(
           {
             model: this.opts.model,
@@ -53,12 +59,18 @@ export class AnthropicAgentProvider implements AgentProvider {
         )
 
         for await (const event of stream) {
-          if (event.type === 'content_block_delta' && event.delta.type === 'text_delta') {
+          if (event.type === 'message_start') {
+            pendingInput = event.message.usage?.input_tokens ?? 0
+          } else if (event.type === 'message_delta') {
+            pendingOutput = event.usage?.output_tokens ?? pendingOutput
+          } else if (event.type === 'content_block_delta' && event.delta.type === 'text_delta') {
             yield { kind: 'delta', text: event.delta.text }
           }
         }
 
         const final = await stream.finalMessage()
+        pendingInput = 0
+        pendingOutput = 0 // consumed — finalMessage is authoritative for a completed round
         if (final.usage) {
           yield {
             kind: 'usage',
@@ -77,10 +89,14 @@ export class AnthropicAgentProvider implements AgentProvider {
           (b): b is Anthropic.ToolUseBlock => b.type === 'tool_use',
         )
         if (final.stop_reason !== 'tool_use' || toolUses.length === 0) break
+        // Stop pressed after the model chose tools but before we ran them —
+        // don't execute this round's tool calls.
+        if (ctx.signal.aborted) break
 
         messages.push({ role: 'assistant', content: final.content })
         const results: Anthropic.ToolResultBlockParam[] = []
         for (const tu of toolUses) {
+          if (ctx.signal.aborted) break // stop between tools in a multi-tool round
           const input = (tu.input ?? {}) as Record<string, unknown>
           yield { kind: 'tool_call', name: tu.name, input }
           const exec = await ctx.executeTool(tu.name, input)
@@ -95,8 +111,11 @@ export class AnthropicAgentProvider implements AgentProvider {
       }
       yield { kind: 'message_done', fullText: fullText.join('\n\n') }
     } catch (err) {
-      // a Stop aborts the request mid-stream — keep the partial text, no error
+      // a Stop aborts the request mid-stream — keep the partial text + usage
       if (ctx.signal.aborted) {
+        if (pendingInput > 0 || pendingOutput > 0) {
+          yield { kind: 'usage', inputTokens: pendingInput, outputTokens: pendingOutput }
+        }
         if (fullText.length > 0) yield { kind: 'message_done', fullText: fullText.join('\n\n') }
         return
       }

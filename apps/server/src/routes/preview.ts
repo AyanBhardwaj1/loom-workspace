@@ -27,6 +27,11 @@ import { makeRequireUser } from './helpers'
 // Preview documents may run their own inline scripts/styles and load same-origin
 // assets, images and fonts — but must not open any network connection.
 const PREVIEW_CSP = [
+  // `sandbox allow-scripts` (no allow-same-origin) forces an opaque origin even
+  // on a DIRECT navigation (the "open in new tab" link), so agent-written HTML
+  // can never touch our cookies/localStorage/API — same guarantee the iframe's
+  // sandbox attribute gives, now enforced at the response layer too.
+  'sandbox allow-scripts',
   "default-src 'self' 'unsafe-inline' 'unsafe-eval' data: blob:",
   "img-src 'self' data: blob:",
   "font-src 'self' data:",
@@ -60,15 +65,37 @@ const CONTENT_TYPES: Record<string, string> = {
   '.map': 'application/json; charset=utf-8',
 }
 
-/** Resolve a request subpath against a root, rejecting escapes and .git. */
+/**
+ * Resolve a request subpath against a root, rejecting escapes and .git.
+ * Two layers: a lexical containment check on the requested path, then a
+ * REALPATH containment check — the agent can create symlinks inside its
+ * worktree (run_command node → fs.symlinkSync('/etc', 'link')), and serving
+ * through one would be an arbitrary-file read. Same discipline as
+ * agent/tools.ts resolveSafe.
+ */
 function resolveInRoot(root: string, subpath: string): string | null {
   const resolvedRoot = path.resolve(root)
   const decoded = safeDecode(subpath)
-  if (decoded === null) return null
+  if (decoded === null || decoded.includes('\0')) return null
   const resolved = path.resolve(resolvedRoot, '.' + path.sep + decoded)
   if (resolved !== resolvedRoot && !resolved.startsWith(resolvedRoot + path.sep)) return null
   const rel = path.relative(resolvedRoot, resolved).toLowerCase()
   if (rel === '.git' || rel.startsWith('.git' + path.sep)) return null
+  // realpath layer: follow symlinks on the nearest existing ancestor and
+  // reject anything that lands outside the (realpath of the) root
+  try {
+    let probe = resolved
+    while (!fs.existsSync(probe)) {
+      const parent = path.dirname(probe)
+      if (parent === probe) return null
+      probe = parent
+    }
+    const realProbe = fs.realpathSync(probe)
+    const realRoot = fs.realpathSync(resolvedRoot)
+    if (realProbe !== realRoot && !realProbe.startsWith(realRoot + path.sep)) return null
+  } catch {
+    return null
+  }
   return resolved
 }
 

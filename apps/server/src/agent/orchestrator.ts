@@ -1,4 +1,4 @@
-import type { AgentTurnContext } from '@loom/shared'
+import type { AgentTurnContext, EventPayloadOf } from '@loom/shared'
 import type { DbHandle } from '../db/client'
 import type { ServerConfig } from '../env'
 import type { ProjectService } from '../projects/service'
@@ -81,21 +81,49 @@ export class AgentOrchestrator {
     this.runningTurns.add(sessionId)
     const aborter = new AbortController()
     this.aborters.set(sessionId, aborter)
-    const done = this.runTurn(session, user, text, aborter.signal, opts?.suggestedBy)
-      .catch(async (err) => {
-        console.error(`[agent] turn failed for session ${sessionId}:`, err)
-        await sessions
-          .appendEvent(sessionId, 'status', {
-            status: 'error',
-            note: `The agent hit an unexpected error: ${err instanceof Error ? err.message : String(err)}`,
-          })
-          .catch(() => {})
-      })
-      .finally(() => {
-        this.runningTurns.delete(sessionId)
-        this.aborters.delete(sessionId)
-      })
+    const done = this.finishTurn(session, user, text, aborter, opts?.suggestedBy)
     return { ok: true, done }
+  }
+
+  /**
+   * Runs the turn, then emits the TERMINAL status event only AFTER the session
+   * is released from runningTurns. This ordering matters: the client's queued
+   * composer auto-dispatches on the terminal idle/error event, and if the
+   * session were still marked "running" at that instant (e.g. during the git
+   * commit on the error tail) the dispatched message would be rejected and
+   * silently dropped.
+   */
+  private async finishTurn(
+    session: NonNullable<Awaited<ReturnType<SessionService['getSession']>>>,
+    user: UserRow,
+    text: string,
+    aborter: AbortController,
+    suggestedBy?: { userId: string; name: string },
+  ): Promise<void> {
+    const { sessions } = this.deps
+    let outcome: { status: 'idle' | 'error'; note?: string } = { status: 'idle' }
+    try {
+      outcome = await this.runTurn(session, user, text, aborter.signal, suggestedBy)
+    } catch (err) {
+      console.error(`[agent] turn failed for session ${session.id}:`, err)
+      outcome = {
+        status: 'error',
+        note: `The agent hit an unexpected error: ${err instanceof Error ? err.message : String(err)}`,
+      }
+    } finally {
+      // the server can now accept the next message — release BEFORE the
+      // terminal event so a queued client dispatch isn't rejected in the tail
+      this.runningTurns.delete(session.id)
+      this.aborters.delete(session.id)
+    }
+
+    await sessions.setSessionRowStatus(session.id, 'idle')
+    const terminal: EventPayloadOf<'status'> = aborter.signal.aborted
+      ? { status: 'idle', note: 'Stopped by driver' }
+      : outcome.status === 'error'
+        ? { status: 'error', note: outcome.note }
+        : { status: 'idle' }
+    await sessions.appendEvent(session.id, 'status', terminal).catch(() => {})
   }
 
   private async runTurn(
@@ -104,10 +132,15 @@ export class AgentOrchestrator {
     text: string,
     signal: AbortSignal,
     suggestedBy?: { userId: string; name: string },
-  ): Promise<void> {
+  ): Promise<{ status: 'idle' | 'error'; note?: string }> {
     const { sessions, projects, runtime } = this.deps
     const provider = runtime.provider
     const summarizer = runtime.summarizer
+    // snapshot the provider identity at turn START — a key pasted mid-turn
+    // hot-swaps runtime.mode/model, but THIS turn ran on the provider above,
+    // so its usage must be attributed (and priced) to that provider
+    const turnMode = runtime.mode
+    const turnModel = runtime.model
     const module = await projects.getModule(session.moduleId)
     const project = await projects.getProject(session.projectId)
     if (!module || !project) throw new Error('Module or project missing')
@@ -146,7 +179,7 @@ export class AgentOrchestrator {
       },
     }
 
-    let sawError = false
+    let errorNote: string | undefined
     let inputTokens = 0
     let outputTokens = 0
     try {
@@ -172,8 +205,10 @@ export class AgentOrchestrator {
             outputTokens += item.outputTokens
             break
           case 'error':
-            sawError = true
-            await sessions.appendEvent(session.id, 'status', { status: 'error', note: item.message })
+            // captured, not appended here — the terminal status is emitted by
+            // finishTurn AFTER the session is released, so the client's queued
+            // dispatch (which fires on that status) is never rejected
+            errorNote = item.message
             break
         }
       }
@@ -188,21 +223,16 @@ export class AgentOrchestrator {
       await sessions.appendEvent(session.id, 'usage', {
         inputTokens,
         outputTokens,
-        costUsd: estimateCostUsd(runtime.mode, runtime.model, inputTokens, outputTokens),
-        model: runtime.model,
-        provider: runtime.mode,
+        costUsd: estimateCostUsd(turnMode, turnModel, inputTokens, outputTokens),
+        model: turnModel,
+        provider: turnMode,
       })
     }
 
     // commit whatever the agent managed to write, even on a stop
     await this.commitIfDirty(session, module, project, user, text)
 
-    if (signal.aborted) {
-      await sessions.appendEvent(session.id, 'status', { status: 'idle', note: 'Stopped by driver' })
-    } else if (!sawError) {
-      await sessions.appendEvent(session.id, 'status', { status: 'idle' })
-    }
-    await sessions.setSessionRowStatus(session.id, 'idle')
+    return errorNote ? { status: 'error', note: errorNote } : { status: 'idle' }
   }
 
   private async commitIfDirty(

@@ -35,6 +35,9 @@ const CATCHUP_BATCH_SIZE = 500
  */
 export class Hub {
   private conns = new Set<ConnState>()
+  /** per-session promise chain — serializes check-then-act critical sections
+   * (suggestion resolution) across a driver's multiple connections */
+  private sessionLocks = new Map<string, Promise<unknown>>()
 
   constructor(
     private deps: {
@@ -85,6 +88,18 @@ export class Hub {
 
   private sendError(conn: ConnState, code: string, message: string): void {
     this.send(conn, { t: 'error', code, message })
+  }
+
+  /** Run fn with exclusive access per sessionId (tail-chained promise). */
+  private async withSessionLock<T>(sessionId: string, fn: () => Promise<T>): Promise<T> {
+    const prev = this.sessionLocks.get(sessionId) ?? Promise.resolve()
+    const run = prev.then(fn, fn)
+    // keep the chain alive but swallow rejections so one failure doesn't wedge it
+    this.sessionLocks.set(
+      sessionId,
+      run.catch(() => {}),
+    )
+    return run
   }
 
   private async onMessage(conn: ConnState, raw: string): Promise<void> {
@@ -195,20 +210,25 @@ export class Hub {
         if (session.driverUserId !== conn.user.id) {
           return this.sendError(conn, 'forbidden', 'Only the driver can resolve suggestions')
         }
-        const pending = await sessions.getPendingSuggestion(msg.sessionId, msg.suggestionId)
-        if (!pending) return this.sendError(conn, 'rejected', 'That suggestion was already handled')
-        if (msg.decision === 'dismissed') {
-          await sessions.recordSuggestionDecision(msg.sessionId, msg.suggestionId, 'dismissed', conn.user.name)
-          return
-        }
-        // accepted: only the driver's accept turns a suggestion into agent work.
-        // start the turn first; record the decision only if it actually started,
-        // so a busy session doesn't leave a suggestion marked accepted-but-idle.
-        const res = await orchestrator.handleUserMessage(msg.sessionId, conn.user, pending.text, {
-          suggestedBy: { userId: pending.suggesterUserId, name: pending.suggesterName },
+        // Serialize per session so two driver tabs can't both pass the
+        // pendingness check before either records a decision (which would
+        // persist contradictory decisions and run a dismissed suggestion).
+        await this.withSessionLock(msg.sessionId, async () => {
+          const pending = await sessions.getPendingSuggestion(msg.sessionId, msg.suggestionId)
+          if (!pending) return this.sendError(conn, 'rejected', 'That suggestion was already handled')
+          if (msg.decision === 'dismissed') {
+            await sessions.recordSuggestionDecision(msg.sessionId, msg.suggestionId, 'dismissed', conn.user.name)
+            return
+          }
+          // accepted: only the driver's accept turns a suggestion into agent work.
+          // start the turn first; record the decision only if it actually started,
+          // so a busy session doesn't leave a suggestion marked accepted-but-idle.
+          const res = await orchestrator.handleUserMessage(msg.sessionId, conn.user, pending.text, {
+            suggestedBy: { userId: pending.suggesterUserId, name: pending.suggesterName },
+          })
+          if (!res.ok) return this.sendError(conn, 'rejected', res.error ?? 'Could not run the suggestion')
+          await sessions.recordSuggestionDecision(msg.sessionId, msg.suggestionId, 'accepted', conn.user.name)
         })
-        if (!res.ok) return this.sendError(conn, 'rejected', res.error ?? 'Could not run the suggestion')
-        await sessions.recordSuggestionDecision(msg.sessionId, msg.suggestionId, 'accepted', conn.user.name)
         return
       }
       case 'catchup': {

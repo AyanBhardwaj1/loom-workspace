@@ -1,4 +1,5 @@
 import fs from 'node:fs'
+import os from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { startServer, type RunningServer } from '../src/app'
@@ -104,5 +105,46 @@ describe('preview route (integration)', () => {
     // unknown session → 404
     const missing = await fetch(`${base}/preview/session/does-not-exist/`, { headers: { cookie } })
     expect(missing.status).toBe(404)
+  })
+
+  it('refuses to serve through a symlink that escapes the worktree', async () => {
+    const cookie = await signup('Ada', 'ada3@preview.dev')
+    const { services } = ctx
+    const user = await userByEmail('ada3@preview.dev')
+    const project = await services.projects.createProject('Prev3', '', user)
+    const modules = await services.projects.listModules(project.id)
+    const session = await services.sessions.createSession(modules[0]!.id, user)
+
+    // a secret outside the worktree, and a symlink to it the agent could plant
+    const secret = path.join(os.tmpdir(), `loom-secret-${Date.now()}.txt`)
+    fs.writeFileSync(secret, 'TOP-SECRET-PREVIEW-LEAK')
+    fs.symlinkSync(secret, path.join(session.worktreePath, 'leak.txt'))
+    // and a symlinked directory pointing at a real dir outside
+    fs.symlinkSync(os.tmpdir(), path.join(session.worktreePath, 'out'))
+
+    try {
+      const viaFile = await fetch(`${base}/preview/session/${session.id}/leak.txt`, { headers: { cookie } })
+      expect([403, 404]).toContain(viaFile.status)
+      expect(await viaFile.text()).not.toContain('TOP-SECRET-PREVIEW-LEAK')
+
+      const viaDir = await fetch(`${base}/preview/session/${session.id}/out/${path.basename(secret)}`, {
+        headers: { cookie },
+      })
+      expect([403, 404]).toContain(viaDir.status)
+      expect(await viaDir.text()).not.toContain('TOP-SECRET-PREVIEW-LEAK')
+    } finally {
+      fs.rmSync(secret, { force: true })
+    }
+  })
+
+  it('serves preview with a sandbox CSP that neutralizes a direct (new-tab) open', async () => {
+    const cookie = await signup('Ada', 'ada4@preview.dev')
+    const { services } = ctx
+    const user = await userByEmail('ada4@preview.dev')
+    const project = await services.projects.createProject('Prev4', '', user)
+    const res = await fetch(`${base}/preview/main/${project.id}/`, { headers: { cookie } })
+    const csp = res.headers.get('content-security-policy') ?? ''
+    expect(csp).toContain('sandbox allow-scripts') // opaque origin even on top-level nav
+    expect(csp).toContain("connect-src 'none'")
   })
 })

@@ -128,6 +128,11 @@ export class OpenAICompatProvider implements AgentProvider {
           yield { kind: 'delta', text: '\n\n' }
         }
 
+        // Stop pressed: the stream was cut, so any tool calls we accumulated
+        // are likely truncated (partial JSON args). Do NOT execute them — a
+        // half-parsed write_file/delete_file would corrupt the worktree.
+        if (ctx.signal.aborted) break
+
         const completed = toolCalls.filter((t) => t.name)
         if (completed.length === 0) break
 
@@ -141,6 +146,7 @@ export class OpenAICompatProvider implements AgentProvider {
           })),
         })
         for (const call of completed) {
+          if (ctx.signal.aborted) break // stop between tools in a multi-tool round
           let input: Record<string, unknown> = {}
           try {
             input = JSON.parse(call.args || '{}') as Record<string, unknown>
