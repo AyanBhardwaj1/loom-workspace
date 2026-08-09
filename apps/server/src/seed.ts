@@ -1,4 +1,5 @@
 import { eq } from 'drizzle-orm'
+import { BRAND } from '@loom/shared'
 import { ulid } from 'ulid'
 import { AuthService } from './auth/service'
 import { createDb } from './db/client'
@@ -66,7 +67,7 @@ async function seed(): Promise<void> {
 A team wiki app that writes itself — capture decisions where they happen and
 find them when it matters.
 
-This repo is built collaboratively through Loom: every commit was made by an
+This repo is built collaboratively through ${BRAND}: every commit was made by an
 AI coding agent driven by a team member in a live, forkable session.
 `,
     { name: founders[0]!.name, email: founders[0]!.email },

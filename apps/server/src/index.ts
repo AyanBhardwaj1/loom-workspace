@@ -1,3 +1,4 @@
+import { BRAND } from '@loom/shared'
 import { startServer } from './app'
 import { loadConfig } from './env'
 import { createServices } from './services'
@@ -13,11 +14,9 @@ async function main(): Promise<void> {
       : `${services.runtime.mode} (${services.runtime.model})`
 
   console.log(`
-  ┌─────────────────────────────────────────────────┐
-  │  Loom server                                    │
-  │  http://localhost:${String(server.port).padEnd(5)}                        │
-  │  ws:   /ws · api: /api · agent: ${services.runtime.mode.padEnd(9)}       │
-  └─────────────────────────────────────────────────┘
+  ${BRAND} server
+  http://localhost:${server.port}
+  ws: /ws · api: /api · agent: ${services.runtime.mode}
   agent provider: ${mode}
   data dir:       ${config.dataDir}
   database:       ${config.databaseUrl ? 'postgres' : `sqlite (${config.sqlitePath})`}

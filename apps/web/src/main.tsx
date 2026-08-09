@@ -2,9 +2,14 @@ import React from 'react'
 import ReactDOM from 'react-dom/client'
 import { BrowserRouter } from 'react-router-dom'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
+import { BRAND, BRAND_TAGLINE } from '@loom/shared'
 import App from './App'
 import { AuthProvider } from './state/auth'
 import './index.css'
+
+// the browser-tab title is driven by BRAND too (index.html holds a static
+// placeholder that this overrides on load)
+document.title = `${BRAND} — ${BRAND_TAGLINE}`
 
 const queryClient = new QueryClient({
   defaultOptions: {

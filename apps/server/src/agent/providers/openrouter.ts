@@ -1,4 +1,4 @@
-import type { AgentProvider, AgentStreamItem, AgentTurnContext, TranscriptEntry } from '@loom/shared'
+import { BRAND, type AgentProvider, type AgentStreamItem, type AgentTurnContext, type TranscriptEntry } from '@loom/shared'
 import { agentSystemPrompt } from '../context'
 import { TemplateSummarizer, type CommitSummary, type Summarizer, type SummaryInput } from '../summarizer'
 import { AGENT_TOOL_DEFS } from '../tools'
@@ -65,8 +65,7 @@ export class OpenAICompatProvider implements AgentProvider {
             authorization: `Bearer ${this.opts.apiKey}`,
             'content-type': 'application/json',
             // OpenRouter attribution headers (harmless on other endpoints)
-            'HTTP-Referer': 'https://github.com/loom-dev/loom',
-            'X-Title': 'Loom',
+            'X-Title': BRAND,
           },
           body: JSON.stringify({
             model: this.opts.model,

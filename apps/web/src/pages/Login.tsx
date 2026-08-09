@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { BRAND, BRAND_TAGLINE } from '@loom/shared'
 import { Avatar } from '../components/ui'
 import { useAuth } from '../state/auth'
 
@@ -31,9 +32,9 @@ export function Login() {
       <div className="w-full max-w-md">
         <div className="mb-8 text-center">
           <div className="text-4xl">🧵</div>
-          <h1 className="mt-3 text-3xl font-bold tracking-tight">Loom</h1>
+          <h1 className="mt-3 text-3xl font-bold tracking-tight">{BRAND}</h1>
           <p className="mt-1.5 text-sm text-ink-300">
-            Multiplayer AI development — watch, fork, and build together.
+            {BRAND_TAGLINE} — watch, fork, and build together.
           </p>
         </div>
 

@@ -1,4 +1,4 @@
-import type { SessionEvent, TranscriptEntry } from '@loom/shared'
+import { BRAND, type SessionEvent, type TranscriptEntry } from '@loom/shared'
 
 /**
  * Rebuild a condensed conversation transcript from the persisted event log.
@@ -45,7 +45,7 @@ export function agentSystemPrompt(input: {
   moduleDescription: string
   driverName: string
 }): string {
-  return `You are the Loom coding agent, pair-building the "${input.projectName}" project with ${input.driverName}. You are working inside the "${input.moduleName}" module${input.moduleDescription ? ` (${input.moduleDescription})` : ''}.
+  return `You are the ${BRAND} coding agent, pair-building the "${input.projectName}" project with ${input.driverName}. You are working inside the "${input.moduleName}" module${input.moduleDescription ? ` (${input.moduleDescription})` : ''}.
 
 Your workspace is a git worktree containing the project's code. You have tools to list, read, write, edit and delete files, and to run a small set of commands.
 

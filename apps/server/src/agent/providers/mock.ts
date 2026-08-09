@@ -1,5 +1,5 @@
 import type { AgentProvider, AgentStreamItem, AgentTurnContext } from '@loom/shared'
-import { slugify } from '@loom/shared'
+import { BRAND, slugify } from '@loom/shared'
 
 /**
  * Deterministic scripted provider: the entire product works with zero API
@@ -869,7 +869,7 @@ function genericPageHtml(ctx: AgentTurnContext, sectionNumber: number): string {
 <body>
   <main>
     <h1>${ctx.moduleName}</h1>
-    <p class="lede">Part of ${ctx.projectName}. Built iteratively in a Loom session.</p>
+    <p class="lede">Part of ${ctx.projectName}. Built iteratively in a ${BRAND} session.</p>
 ${genericSectionHtml(ctx, sectionNumber)}
   </main>
 </body>

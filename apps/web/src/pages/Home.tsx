@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import type { ProjectSummary } from '@loom/shared'
+import { BRAND, BRAND_TAGLINE } from '@loom/shared'
 import { AgentModeChip, AiSettingsDialog } from '../components/AiSettingsDialog'
 import { AvatarStack, Avatar, CardSkeleton, Dialog, EmptyState, ErrorState } from '../components/ui'
 import { api } from '../lib/api'
@@ -50,8 +51,8 @@ export function Home() {
       <header className="mb-8 flex items-center gap-4">
         <div className="text-2xl">🧵</div>
         <div>
-          <h1 className="text-xl font-bold tracking-tight">Loom</h1>
-          <p className="text-xs text-ink-400">Multiplayer AI development</p>
+          <h1 className="text-xl font-bold tracking-tight">{BRAND}</h1>
+          <p className="text-xs text-ink-400">{BRAND_TAGLINE}</p>
         </div>
         <div className="ml-auto flex items-center gap-3">
           <AgentModeChip onClick={() => setAiOpen(true)} />
@@ -88,7 +89,7 @@ export function Home() {
         <EmptyState
           emoji="🌱"
           title="No projects yet"
-          hint="Create your first project — Loom will set up its git repo and starter modules."
+          hint={`Create your first project — ${BRAND} will set up its git repo and starter modules.`}
           action={
             <button className="btn-primary" onClick={() => setCreateOpen(true)}>
               Create a project

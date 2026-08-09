@@ -1,5 +1,5 @@
 /**
- * Rough published prices (USD per 1M tokens) for the models Loom commonly
+ * Rough published prices (USD per 1M tokens) for the models this app commonly
  * drives, matched by substring. These are ESTIMATES for the cost chip — the
  * point is proportional visibility, not billing accuracy. Update as prices move.
  */

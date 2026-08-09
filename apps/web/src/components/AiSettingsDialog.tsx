@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { clsx } from 'clsx'
-import type { AiProviderKind, AiSettingsDto } from '@loom/shared'
+import { BRAND, type AiProviderKind, type AiSettingsDto } from '@loom/shared'
 import { api } from '../lib/api'
 import { Dialog, Spinner } from './ui'
 
@@ -189,7 +189,7 @@ export function AiSettingsDialog({ open, onClose }: { open: boolean; onClose: ()
         </div>
 
         <p className="text-[10px] leading-relaxed text-ink-400">
-          The key is checked with a 1-token test call, then stored in this Loom server's own database and
+          The key is checked with a 1-token test call, then stored in this {BRAND} server's own database and
           used only to call your chosen provider. It never reaches other users' browsers — teammates just
           see the agent get smarter.
         </p>

@@ -1,5 +1,6 @@
 import path from 'node:path'
 import { and, desc, eq, inArray, lt, sql } from 'drizzle-orm'
+import { BRAND } from '@loom/shared'
 import { ulid } from 'ulid'
 import type {
   ChangeSummary,
@@ -312,7 +313,7 @@ function projectReadme(name: string, description: string): string {
 
 ${description}
 
-Built collaboratively with [Loom](https://github.com/loom) — every change in this repo was made
+Built collaboratively with ${BRAND} — every change in this repo was made
 by an AI coding agent driven by a team member, in a forkable multiplayer session.
 `
 }
