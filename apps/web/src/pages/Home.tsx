@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import type { ProjectSummary } from '@loom/shared'
+import { clsx } from 'clsx'
 import { BRAND, BRAND_TAGLINE } from '@loom/shared'
 import { AgentModeChip, AiSettingsDialog } from '../components/AiSettingsDialog'
 import { AvatarStack, Avatar, CardSkeleton, Dialog, EmptyState, ErrorState } from '../components/ui'
@@ -98,29 +99,47 @@ export function Home() {
         />
       ) : (
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
-          {projectsQuery.data!.projects.map((p) => (
-            <Link
-              key={p.id}
-              to={`/p/${p.id}`}
-              className="card group relative overflow-hidden p-5 transition-colors hover:border-accent"
-            >
-              {p.activeSessionCount > 0 && (
-                <span className="absolute right-4 top-4 inline-flex items-center gap-1.5 text-[11px] text-emerald-300">
-                  <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-emerald-400" />
-                  {p.activeSessionCount} live
-                </span>
-              )}
-              <h3 className="pr-14 text-base font-semibold group-hover:text-accent-soft">{p.name}</h3>
-              <p className="mt-1 line-clamp-2 min-h-[2rem] text-xs text-ink-300">{p.description || '—'}</p>
-              <div className="mt-4 flex items-center gap-3">
-                <AvatarStack users={p.members} />
-                <span className="text-[11px] text-ink-400">
-                  {p.moduleCount} module{p.moduleCount === 1 ? '' : 's'}
-                </span>
-                <span className="ml-auto text-[11px] text-ink-400">{timeAgo(p.lastActivityAt, now)}</span>
-              </div>
-            </Link>
-          ))}
+          {projectsQuery.data!.projects.map((p) => {
+            const live = p.activeSessionCount > 0
+            return (
+              <Link
+                key={p.id}
+                to={`/p/${p.id}`}
+                className={clsx(
+                  'panel panel-hover group relative overflow-hidden p-5 transition-all duration-200 hover:-translate-y-0.5',
+                  live && 'border-thread-add/25',
+                )}
+              >
+                {/* live-activity aura */}
+                {live && (
+                  <div
+                    className="pointer-events-none absolute -right-8 -top-8 h-24 w-24 rounded-full opacity-70 blur-2xl"
+                    style={{ background: 'radial-gradient(circle, rgba(56,224,165,0.25), transparent 70%)' }}
+                  />
+                )}
+                {live && (
+                  <span className="absolute right-4 top-4 inline-flex items-center gap-1.5 text-[11px] text-thread-add">
+                    <span className="relative flex h-1.5 w-1.5">
+                      <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-thread-add opacity-60" />
+                      <span className="relative inline-flex h-1.5 w-1.5 rounded-full bg-thread-add" />
+                    </span>
+                    <span className="font-mono tabular-nums">{p.activeSessionCount} live</span>
+                  </span>
+                )}
+                <h3 className="pr-16 text-base font-semibold tracking-tight transition-colors group-hover:text-accent-soft">
+                  {p.name}
+                </h3>
+                <p className="mt-1 line-clamp-2 min-h-[2rem] text-xs leading-relaxed text-ink-300">{p.description || '—'}</p>
+                <div className="mt-4 flex items-center gap-3">
+                  <AvatarStack users={p.members} />
+                  <span className="micro-label">
+                    {p.moduleCount} module{p.moduleCount === 1 ? '' : 's'}
+                  </span>
+                  <span className="ml-auto font-mono text-[11px] text-ink-400">{timeAgo(p.lastActivityAt, now)}</span>
+                </div>
+              </Link>
+            )
+          })}
         </div>
       )}
 

@@ -184,6 +184,18 @@ body::before {
   }
 }
 
+/* the login wordmark's thread draws in */
+@keyframes login-thread {
+  from {
+    transform: scaleX(0);
+    opacity: 0;
+  }
+  to {
+    transform: scaleX(1);
+    opacity: 1;
+  }
+}
+
 /* streaming caret for in-flight assistant text */
 .streaming-caret::after {
   content: '▍';

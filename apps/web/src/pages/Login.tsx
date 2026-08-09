@@ -28,20 +28,32 @@ export function Login() {
   }
 
   return (
-    <div className="flex min-h-full items-center justify-center bg-[radial-gradient(1000px_500px_at_50%_-10%,#1d1a33_0%,#0a0a0f_60%)] p-6">
-      <div className="w-full max-w-md">
+    <div className="relative flex min-h-full items-center justify-center overflow-hidden p-6">
+      {/* cinematic ambient glow behind everything */}
+      <div
+        className="pointer-events-none absolute left-1/2 top-[-10%] h-[60vh] w-[60vh] -translate-x-1/2 rounded-full opacity-60 blur-3xl"
+        style={{ background: 'radial-gradient(circle, rgba(139,124,246,0.22), rgba(56,214,224,0.06) 55%, transparent 70%)' }}
+      />
+      <div className="anim-dialog-in relative w-full max-w-md">
         <div className="mb-8 text-center">
-          <div className="text-4xl">🧵</div>
-          <h1 className="mt-3 text-3xl font-bold tracking-tight">{BRAND}</h1>
-          <p className="mt-1.5 text-sm text-ink-300">
-            {BRAND_TAGLINE} — watch, fork, and build together.
-          </p>
+          <div className="mx-auto flex h-16 w-16 items-center justify-center text-4xl">
+            <span className="animate-breathe drop-shadow-[0_0_16px_rgba(139,124,246,0.55)]">🧵</span>
+          </div>
+          <h1 className="mt-2 bg-gradient-to-b from-white to-ink-300 bg-clip-text text-4xl font-bold tracking-tight text-transparent">
+            {BRAND}
+          </h1>
+          <div className="mx-auto mt-2 h-px w-28 origin-center animate-[login-thread_0.7s_ease-out_both]"
+            style={{ background: 'linear-gradient(90deg, transparent, #8b7cf6, #38d6e0, transparent)' }}
+          />
+          <p className="mt-3 text-sm text-ink-300">{BRAND_TAGLINE} — watch, fork, and build together.</p>
         </div>
 
         {devMode && devUsers.length > 0 && (
-          <div className="card mb-4 p-5">
-            <div className="mb-3 text-xs font-semibold uppercase tracking-wider text-ink-300">
-              Quick login <span className="ml-1 rounded bg-ink-700 px-1.5 py-0.5 text-[10px] normal-case">dev</span>
+          <div className="panel mb-4 p-5">
+            <div className="hairline absolute inset-x-5 top-0" />
+            <div className="mb-3 flex items-center gap-2">
+              <span className="micro-label">quick login</span>
+              <span className="rounded bg-white/[0.06] px-1.5 py-0.5 font-mono text-[9px] uppercase text-ink-400">dev</span>
             </div>
             <div className="grid grid-cols-1 gap-1.5">
               {devUsers.map((u) => (
@@ -59,21 +71,23 @@ export function Login() {
                     }
                   }}
                   data-testid={`quick-login-${u.email}`}
-                  className="flex items-center gap-3 rounded-xl border border-ink-700 bg-ink-850 px-3 py-2 text-left transition-colors hover:border-accent disabled:opacity-50"
+                  className="group flex items-center gap-3 rounded-xl border border-white/[0.07] bg-white/[0.02] px-3 py-2 text-left transition-all duration-150 hover:-translate-y-px hover:border-white/20 hover:bg-white/[0.05] disabled:opacity-50"
                 >
-                  <Avatar name={u.name} color={u.avatarColor} size="sm" />
-                  <span className="text-sm">{u.name}</span>
-                  <span className="ml-auto text-xs text-ink-400">{devBusy === u.id ? 'signing in…' : u.email}</span>
+                  <span className="transition-transform duration-150 group-hover:scale-110" style={{ filter: `drop-shadow(0 0 8px ${u.avatarColor}88)` }}>
+                    <Avatar name={u.name} color={u.avatarColor} size="sm" />
+                  </span>
+                  <span className="text-sm font-medium">{u.name}</span>
+                  <span className="ml-auto font-mono text-[11px] text-ink-400">
+                    {devBusy === u.id ? 'signing in…' : u.email}
+                  </span>
                 </button>
               ))}
             </div>
           </div>
         )}
 
-        <form onSubmit={submit} className="card space-y-3 p-5">
-          <div className="text-xs font-semibold uppercase tracking-wider text-ink-300">
-            {mode === 'login' ? 'Sign in with email' : 'Create an account'}
-          </div>
+        <form onSubmit={submit} className="panel space-y-3 p-5">
+          <div className="micro-label">{mode === 'login' ? 'sign in with email' : 'create an account'}</div>
           {mode === 'signup' && (
             <input
               className="input"
