@@ -1,6 +1,9 @@
 import { clsx } from 'clsx'
-import { useMemo, useState, type ReactNode } from 'react'
+import { useMemo, useState, type CSSProperties, type ReactNode } from 'react'
 import type { SessionEvent, SessionEventOf } from '@loom/shared'
+
+/** helper: a CSS custom property for the semantic edge glow */
+const edge = (color: string): CSSProperties => ({ ['--edge' as string]: color })
 
 /**
  * The event log is the source of truth; this module turns it into chat UI.
@@ -154,10 +157,10 @@ function RowBody({
     case 'user': {
       const via = item.event.payload.suggestedByName
       return (
-        <div className="flex justify-end">
+        <div className="flex justify-end py-0.5">
           <div
             className={clsx(
-              'max-w-[85%] whitespace-pre-wrap rounded-2xl rounded-br-md bg-accent-faint px-4 py-2.5 text-ink-100',
+              'max-w-[85%] whitespace-pre-wrap rounded-2xl rounded-br-sm border border-accent/20 bg-accent/[0.1] px-4 py-2.5 text-ink-100 shadow-[inset_0_1px_0_0_rgba(255,255,255,0.06)]',
               compact ? 'text-xs px-3 py-1.5' : 'text-sm',
             )}
           >
@@ -174,7 +177,13 @@ function RowBody({
     }
     case 'assistant':
       return (
-        <div className={clsx('whitespace-pre-wrap leading-relaxed text-ink-100', compact ? 'text-xs' : 'text-sm')}>
+        <div
+          className={clsx(
+            'glow-edge whitespace-pre-wrap py-0.5 pl-3.5 leading-relaxed text-ink-100',
+            compact ? 'text-xs' : 'text-sm',
+          )}
+          style={edge('var(--thread-agent)')}
+        >
           <InlineText text={item.event.payload.text} />
         </div>
       )
@@ -272,7 +281,7 @@ function InlineText({ text }: { text: string }) {
     <>
       {parts.map((part, i) =>
         part.startsWith('`') && part.endsWith('`') && part.length > 2 ? (
-          <code key={i} className="rounded bg-ink-800 px-1 py-0.5 font-mono text-[0.85em] text-accent-soft">
+          <code key={i} className="rounded border border-white/10 bg-black/40 px-1 py-0.5 font-mono text-[0.85em] text-thread-tool">
             {part.slice(1, -1)}
           </code>
         ) : (
@@ -292,23 +301,32 @@ function ToolChip({ item, compact }: { item: Extract<DisplayItem, { kind: 'tool'
   const label = pathArg ?? cmdArg
 
   return (
-    <div className="my-0.5">
+    <div className="glow-edge my-0.5 pl-3.5" style={edge('var(--thread-tool)')}>
       <button
         onClick={() => setOpen((v) => !v)}
         className={clsx(
-          'inline-flex max-w-full items-center gap-2 rounded-lg border border-ink-600 bg-ink-850 px-2.5 py-1 text-left transition-colors hover:border-ink-400',
+          'group/tool inline-flex max-w-full items-center gap-2 rounded-lg border border-thread-tool/25 bg-thread-tool/[0.06] px-2.5 py-1 text-left transition-all duration-150 hover:border-thread-tool/50 hover:bg-thread-tool/10',
           compact ? 'text-[10px]' : 'text-xs',
         )}
       >
-        <span>{icon}</span>
-        <span className="font-mono text-ink-200">{call.payload.toolName}</span>
+        <span className="text-[0.9em] opacity-90">{icon}</span>
+        <span className="font-mono font-medium tracking-tight text-thread-tool">{call.payload.toolName}</span>
         {label && <span className="truncate font-mono text-ink-400">{label}</span>}
         {result ? (
-          <span className={result.payload.ok ? 'text-emerald-400' : 'text-red-400'}>
-            {result.payload.ok ? '✓' : '✗'}
+          <span
+            className="relative flex h-1.5 w-1.5"
+            title={result.payload.ok ? 'ok' : 'failed'}
+          >
+            <span
+              className="inline-flex h-1.5 w-1.5 rounded-full"
+              style={{
+                backgroundColor: result.payload.ok ? '#38e0a5' : '#f26d6d',
+                boxShadow: `0 0 6px 0 ${result.payload.ok ? '#38e0a5' : '#f26d6d'}`,
+              }}
+            />
           </span>
         ) : (
-          <span className="thinking-dots inline-flex gap-0.5 pl-1">
+          <span className="thinking-dots pl-0.5">
             <span style={{ width: 3, height: 3 }} />
             <span style={{ width: 3, height: 3 }} />
             <span style={{ width: 3, height: 3 }} />
@@ -400,50 +418,54 @@ export function UnifiedDiffView({
   const shown = expanded ? lines : lines.slice(0, DIFF_COLLAPSE_LINES)
   const hidden = lines.length - shown.length
 
+  const edgeColor =
+    changeKind === 'delete' ? 'var(--thread-del)' : changeKind === 'create' ? 'var(--thread-add)' : 'var(--thread-tool)'
   return (
-    <div className="card my-1 overflow-hidden">
-      <div className="flex items-center gap-2 border-b border-ink-700 bg-ink-850 px-3 py-1.5 text-xs">
-        <span>{changeKind === 'create' ? '🆕' : changeKind === 'delete' ? '🗑' : '📝'}</span>
-        <span className="truncate font-mono text-ink-100">{path}</span>
-        <span className="ml-auto">
-          <DiffStats additions={additions} deletions={deletions} />
-        </span>
-      </div>
-      <pre className="overflow-x-auto p-0 font-mono text-[11px] leading-5">
-        {shown.map((line, i) => (
-          <div
-            key={i}
-            className={clsx(
-              'px-3 whitespace-pre',
-              line.startsWith('+')
-                ? 'bg-emerald-950/40 text-emerald-300'
-                : line.startsWith('-')
-                  ? 'bg-red-950/40 text-red-300'
-                  : line.startsWith('@@')
-                    ? 'bg-ink-850 text-accent-soft'
-                    : 'text-ink-300',
-            )}
+    <div className="glow-edge my-1.5 pl-3.5" style={edge(edgeColor)}>
+      <div className="overflow-hidden rounded-xl border border-white/[0.08] bg-black/25">
+        <div className="flex items-center gap-2 border-b border-white/[0.06] bg-white/[0.025] px-3 py-1.5 text-xs">
+          <span className="text-[0.9em]">{changeKind === 'create' ? '🆕' : changeKind === 'delete' ? '🗑' : '📝'}</span>
+          <span className="truncate font-mono tracking-tight text-ink-100">{path}</span>
+          <span className="ml-auto">
+            <DiffStats additions={additions} deletions={deletions} />
+          </span>
+        </div>
+        <pre className="overflow-x-auto p-0 font-mono text-[11px] leading-5">
+          {shown.map((line, i) => (
+            <div
+              key={i}
+              className={clsx(
+                'whitespace-pre border-l-2 pl-2.5 pr-3',
+                line.startsWith('+')
+                  ? 'border-thread-add/60 bg-thread-add/[0.08] text-thread-add'
+                  : line.startsWith('-')
+                    ? 'border-thread-del/60 bg-thread-del/[0.08] text-thread-del'
+                    : line.startsWith('@@')
+                      ? 'border-transparent bg-white/[0.03] text-accent-soft'
+                      : 'border-transparent text-ink-300',
+              )}
+            >
+              {line || ' '}
+            </div>
+          ))}
+        </pre>
+        {hidden > 0 && (
+          <button
+            onClick={() => setExpanded(true)}
+            className="w-full border-t border-white/[0.06] bg-white/[0.02] py-1.5 text-[11px] text-ink-300 transition-colors hover:bg-white/[0.05] hover:text-accent"
           >
-            {line || ' '}
-          </div>
-        ))}
-      </pre>
-      {hidden > 0 && (
-        <button
-          onClick={() => setExpanded(true)}
-          className="w-full border-t border-ink-700 bg-ink-850 py-1.5 text-[11px] text-ink-300 hover:text-accent"
-        >
-          Show {hidden} more line{hidden === 1 ? '' : 's'}
-        </button>
-      )}
-      {expanded && lines.length > DIFF_COLLAPSE_LINES && (
-        <button
-          onClick={() => setExpanded(false)}
-          className="w-full border-t border-ink-700 bg-ink-850 py-1.5 text-[11px] text-ink-300 hover:text-accent"
-        >
-          Collapse
-        </button>
-      )}
+            Show {hidden} more line{hidden === 1 ? '' : 's'}
+          </button>
+        )}
+        {expanded && lines.length > DIFF_COLLAPSE_LINES && (
+          <button
+            onClick={() => setExpanded(false)}
+            className="w-full border-t border-white/[0.06] bg-white/[0.02] py-1.5 text-[11px] text-ink-300 transition-colors hover:bg-white/[0.05] hover:text-accent"
+          >
+            Collapse
+          </button>
+        )}
+      </div>
     </div>
   )
 }
@@ -453,28 +475,40 @@ function CommitRow({ event, compact }: { event: SessionEventOf<'commit'>; compac
   const p = event.payload
   if (compact) {
     return (
-      <div className="my-1 rounded-lg border-l-2 border-accent bg-ink-850/70 px-2.5 py-1.5 text-[10px] text-ink-200">
-        <span className="mr-1">📦</span>
-        {p.plainExplanation}
+      <div className="glow-edge my-1 pl-3" style={edge('var(--thread-commit)')}>
+        <div className="rounded-lg border border-thread-commit/25 bg-thread-commit/[0.07] px-2.5 py-1.5 text-[10px] text-ink-200">
+          <span className="mr-1">📦</span>
+          {p.plainExplanation}
+        </div>
       </div>
     )
   }
   return (
-    <div className="my-1.5 rounded-xl border border-ink-700 border-l-2 border-l-accent bg-ink-850/70 px-4 py-3">
-      <div className="flex items-start gap-2.5">
-        <span className="mt-0.5">📦</span>
-        <div className="min-w-0 flex-1">
-          <div className="text-sm text-ink-100">{p.plainExplanation}</div>
-          <div className="mt-1.5 flex flex-wrap items-center gap-2">
-            <button
-              onClick={() => setShowTechnical((v) => !v)}
-              className="text-[11px] text-ink-400 underline-offset-2 hover:text-accent hover:underline"
-            >
-              {showTechnical ? 'hide technical summary' : 'technical summary'}
-            </button>
-            <span className="mono-chip">{p.commitSha.slice(0, 7)}</span>
+    <div className="glow-edge my-2 pl-3.5" style={edge('var(--thread-commit)')}>
+      <div className="animate-gold-pulse rounded-xl border border-thread-commit/30 bg-thread-commit/[0.06] px-4 py-3">
+        <div className="flex items-start gap-2.5">
+          <span
+            className="mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-lg bg-thread-commit/15 text-sm"
+            title="committed to the session branch"
+          >
+            📦
+          </span>
+          <div className="min-w-0 flex-1">
+            <div className="micro-label mb-0.5 !text-thread-commit">committed</div>
+            <div className="text-sm leading-relaxed text-ink-100">{p.plainExplanation}</div>
+            <div className="mt-2 flex flex-wrap items-center gap-2">
+              <button
+                onClick={() => setShowTechnical((v) => !v)}
+                className="text-[11px] text-ink-400 underline-offset-2 transition-colors hover:text-thread-commit hover:underline"
+              >
+                {showTechnical ? 'hide technical summary' : 'technical summary'}
+              </button>
+              <span className="mono-chip !border-thread-commit/25 !text-thread-commit">{p.commitSha.slice(0, 7)}</span>
+            </div>
+            {showTechnical && (
+              <div className="mt-1.5 font-mono text-xs leading-relaxed text-ink-300">{p.technicalSummary}</div>
+            )}
           </div>
-          {showTechnical && <div className="mt-1.5 font-mono text-xs text-ink-300">{p.technicalSummary}</div>}
         </div>
       </div>
     </div>

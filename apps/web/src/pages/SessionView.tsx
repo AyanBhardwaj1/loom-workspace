@@ -113,35 +113,38 @@ export function SessionView() {
   return (
     <div className="flex min-h-0 flex-1">
       <div className="flex min-w-0 flex-1 flex-col">
-        {/* header */}
-        <header className="flex items-center gap-3 border-b border-ink-700 bg-ink-900/60 px-5 py-3">
+        {/* header — mission-control status bar */}
+        <header className="flex items-center gap-3 border-b border-white/[0.07] bg-ink-950/70 px-5 py-3 backdrop-blur-xl">
           <Link
             to={`/p/${projectId}/m/${session.moduleId}`}
-            className="flex items-center gap-2 text-sm text-ink-300 hover:text-accent"
+            className="flex items-center gap-2 text-sm text-ink-300 transition-colors hover:text-accent"
             title="Back to module"
           >
             <span className="text-lg">{meta.moduleEmoji}</span>
             <span className="hidden font-medium sm:inline">{meta.moduleName}</span>
           </Link>
-          <span className="text-ink-500">/</span>
-          <span className="truncate text-sm font-medium">{session.title}</span>
+          <span className="text-ink-600">/</span>
+          <span className="truncate text-sm font-medium tracking-tight">{session.title}</span>
           {session.parentSessionId && (
             <Link
               to={`/p/${projectId}/s/${session.parentSessionId}`}
-              className="chip text-[10px] hover:border-accent"
+              className="chip text-[10px] transition-colors hover:border-thread-fork/50"
+              style={{ color: 'var(--thread-fork)' }}
               title="Open the session this was forked from"
             >
               ⑂ forked
             </Link>
           )}
-          <div className="ml-auto flex items-center gap-3">
+          <div className="ml-auto flex items-center gap-2.5">
             {usage.inputTokens + usage.outputTokens > 0 && (
               <span
-                className="chip hidden text-[10px] lg:inline-flex"
+                className="mono-chip hidden lg:inline-flex"
                 title={`${usage.inputTokens.toLocaleString()} in · ${usage.outputTokens.toLocaleString()} out over ${usage.turns} turn${usage.turns === 1 ? '' : 's'}`}
               >
-                ▦ {formatTokens(usage.inputTokens + usage.outputTokens)} tok
-                {usage.costUsd > 0 && <span className="ml-1 text-emerald-300">· {formatCost(usage.costUsd)}</span>}
+                ▦ {formatTokens(usage.inputTokens + usage.outputTokens)}
+                {usage.costUsd > 0 && (
+                  <span className="ml-1 text-thread-add">· {formatCost(usage.costUsd)}</span>
+                )}
               </span>
             )}
             <span className="hidden xl:inline-flex">
@@ -153,16 +156,19 @@ export function SessionView() {
               <AgentStatusIndicator status={stream.agentStatus} />
             )}
             {watcherCount > 0 && (
-              <span className="text-xs text-ink-300" title="People viewing this session right now">
-                👁 {watcherCount} watching
+              <span className="inline-flex items-center gap-1 text-xs text-ink-300" title="People viewing this session right now">
+                👁 <span className="font-mono tabular-nums">{watcherCount}</span>
               </span>
             )}
             <div className="flex items-center gap-1.5" title={`${session.driverName} is driving`}>
               <Avatar name={session.driverName} color={session.driverAvatarColor} size="sm" pulsing={!isEnded && stream.agentStatus !== 'idle'} />
               <span className="hidden text-xs text-ink-200 md:inline">{session.driverName}</span>
             </div>
-            <span className="mono-chip hidden lg:inline-flex" title="This session's git branch">
-              {session.branchName}
+            <span
+              className="mono-chip hidden lg:inline-flex !border-accent/25 !text-accent-soft"
+              title="This session's git branch"
+            >
+              ⑂ {session.branchName}
             </span>
             {isDriver && !isEnded && (
               <button onClick={() => void endSession()} disabled={ending} className="btn-ghost text-xs text-ink-400">

@@ -48,16 +48,19 @@ export function Composer({ sessionId, agentStatus }: { sessionId: string; agentS
   }
 
   return (
-    <div className="border-t border-ink-700 bg-ink-900/80 px-5 py-3.5 backdrop-blur">
+    <div className="border-t border-white/[0.07] bg-ink-950/70 px-5 py-3.5 backdrop-blur-xl">
       {queue.length > 0 && (
         <div className="mb-2 flex flex-wrap items-center gap-1.5">
-          <span className="text-[10px] uppercase tracking-wider text-ink-400">Queued</span>
+          <span className="micro-label">queued</span>
           {queue.map((q, i) => (
-            <span key={i} className="chip max-w-[16rem] gap-1 text-[11px]">
+            <span
+              key={i}
+              className="chip animate-rise-in max-w-[16rem] gap-1 border-thread-suggest/30 bg-thread-suggest/[0.08] text-[11px] text-thread-suggest"
+            >
               <span className="truncate">⏳ {q}</span>
               <button
                 onClick={() => setQueue((qq) => qq.filter((_, j) => j !== i))}
-                className="text-ink-400 hover:text-ink-100"
+                className="text-thread-suggest/60 hover:text-thread-suggest"
                 title="Remove from queue"
               >
                 ✕
@@ -84,7 +87,7 @@ export function Composer({ sessionId, agentStatus }: { sessionId: string; agentS
         {busy && (
           <button
             onClick={() => wsClient.stop(sessionId)}
-            className="btn-secondary shrink-0 border-red-900/60 text-red-300 hover:border-red-500"
+            className="btn shrink-0 border border-thread-del/40 bg-thread-del/10 px-4 py-2 text-sm text-thread-del transition-all hover:-translate-y-px hover:bg-thread-del/15 hover:shadow-[0_0_20px_-4px_rgba(242,109,109,0.5)]"
             title="Stop the agent — partial work is still committed"
           >
             ⏹ Stop
