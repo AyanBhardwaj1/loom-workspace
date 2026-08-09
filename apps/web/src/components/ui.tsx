@@ -19,7 +19,7 @@ export function Avatar({
     <div
       title={title ?? name}
       className={clsx(
-        'flex shrink-0 items-center justify-center rounded-full font-semibold text-ink-950 select-none',
+        'flex shrink-0 items-center justify-center rounded-full font-semibold text-ink-950 select-none ring-1 ring-inset ring-white/15',
         sizes[size],
         pulsing && 'animate-pulse-ring',
       )}
@@ -55,49 +55,69 @@ function initials(name: string): string {
 
 export function StatusPill({ status }: { status: 'idea' | 'building' | 'stable' }) {
   const styles = {
-    idea: 'bg-ink-700/60 text-ink-200 border-ink-500',
-    building: 'bg-amber-500/10 text-amber-300 border-amber-500/40',
-    stable: 'bg-emerald-500/10 text-emerald-300 border-emerald-500/40',
+    idea: 'border-white/10 bg-white/[0.05] text-ink-300',
+    building: 'border-amber-400/40 bg-amber-400/10 text-amber-300',
+    stable: 'border-emerald-400/40 bg-emerald-400/10 text-emerald-300',
   }
-  return <span className={clsx('chip border', styles[status])}>{status}</span>
+  return (
+    <span className={clsx('inline-flex items-center gap-1.5 rounded-full border px-2.5 py-0.5', styles[status])}>
+      {status !== 'idea' && (
+        <span
+          className={clsx('h-1.5 w-1.5 rounded-full', status === 'building' ? 'bg-amber-400' : 'bg-emerald-400')}
+        />
+      )}
+      <span className="micro-label !text-inherit">{status}</span>
+    </span>
+  )
+}
+
+/** A small status LED with a soft glow. */
+function Led({ color, pulse }: { color: string; pulse?: boolean }) {
+  return (
+    <span className="relative flex h-1.5 w-1.5">
+      {pulse && (
+        <span
+          className="absolute inline-flex h-full w-full animate-ping rounded-full opacity-60"
+          style={{ backgroundColor: color }}
+        />
+      )}
+      <span
+        className="relative inline-flex h-1.5 w-1.5 rounded-full"
+        style={{ backgroundColor: color, boxShadow: `0 0 6px 0 ${color}` }}
+      />
+    </span>
+  )
 }
 
 export function AgentStatusIndicator({ status }: { status: 'thinking' | 'running_tools' | 'idle' | 'error' }) {
   if (status === 'thinking' || status === 'running_tools') {
     return (
       <span className="inline-flex items-center gap-2 text-xs text-accent-soft">
-        <span className="thinking-dots inline-flex gap-1">
+        <span className="thinking-dots">
           <span />
           <span />
           <span />
         </span>
-        {status === 'thinking' ? 'thinking' : 'working'}
+        <span className="micro-label !text-accent-soft">{status === 'thinking' ? 'thinking' : 'working'}</span>
       </span>
     )
   }
   if (status === 'error') {
     return (
       <span className="inline-flex items-center gap-1.5 text-xs text-red-400">
-        <span className="h-1.5 w-1.5 rounded-full bg-red-400" /> error
+        <Led color="#f26d6d" /> <span className="micro-label !text-red-400">error</span>
       </span>
     )
   }
   return (
     <span className="inline-flex items-center gap-1.5 text-xs text-ink-300">
-      <span className="h-1.5 w-1.5 rounded-full bg-emerald-400" /> idle
+      <Led color="#38e0a5" /> <span className="micro-label">idle</span>
     </span>
   )
 }
 
 export function Spinner({ className }: { className?: string }) {
-  return (
-    <div
-      className={clsx(
-        'h-5 w-5 animate-spin rounded-full border-2 border-ink-500 border-t-accent',
-        className,
-      )}
-    />
-  )
+  return <div className={clsx('loader h-5 w-5', className)} />
 }
 
 export function Dialog({
@@ -123,10 +143,11 @@ export function Dialog({
   if (!open) return null
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-      <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={onClose} />
-      <div className="card relative w-full max-w-md p-6 animate-fade-in-up shadow-2xl shadow-black/50">
+      <div className="anim-overlay-in absolute inset-0 bg-black/60 backdrop-blur-md" onClick={onClose} />
+      <div className="panel anim-dialog-in relative w-full max-w-md p-6 shadow-glass-lg">
+        <div className="hairline absolute inset-x-6 top-0" />
         <div className="mb-4 flex items-center justify-between">
-          <h2 className="text-lg font-semibold">{title}</h2>
+          <h2 className="text-lg font-semibold tracking-tight">{title}</h2>
           <button onClick={onClose} className="btn-ghost -mr-2 px-2 py-1 text-ink-400">
             ✕
           </button>
@@ -162,14 +183,14 @@ export function SlideOver({
   if (!open) return null
   return (
     <div className="fixed inset-0 z-50">
-      <div className="absolute inset-0 bg-black/50" onClick={onClose} />
+      <div className="anim-overlay-in absolute inset-0 bg-black/55 backdrop-blur-sm" onClick={onClose} />
       <div
         className={clsx(
-          'absolute right-0 top-0 h-full overflow-y-auto border-l border-ink-700 bg-ink-900 shadow-2xl',
+          'anim-slide-in absolute right-0 top-0 h-full overflow-y-auto border-l border-white/10 bg-ink-950/95 shadow-glass-lg backdrop-blur-xl',
           wide ? 'w-full max-w-3xl' : 'w-full max-w-xl',
         )}
       >
-        <div className="sticky top-0 z-10 flex items-center justify-between border-b border-ink-700 bg-ink-900/95 px-5 py-4 backdrop-blur">
+        <div className="sticky top-0 z-10 flex items-center justify-between border-b border-white/[0.07] bg-ink-950/80 px-5 py-4 backdrop-blur-xl">
           <div className="min-w-0 flex-1">{title}</div>
           <button onClick={onClose} className="btn-ghost ml-3 px-2 py-1 text-ink-400">
             ✕
@@ -183,18 +204,34 @@ export function SlideOver({
 
 export function EmptyState({ emoji, title, hint, action }: { emoji: string; title: string; hint?: string; action?: ReactNode }) {
   return (
-    <div className="flex flex-col items-center justify-center gap-2 rounded-2xl border border-dashed border-ink-600 px-6 py-12 text-center">
-      <div className="text-3xl">{emoji}</div>
-      <div className="text-sm font-medium text-ink-200">{title}</div>
-      {hint && <div className="max-w-sm text-xs text-ink-400">{hint}</div>}
-      {action && <div className="mt-3">{action}</div>}
+    <div className="relative flex flex-col items-center justify-center gap-2 overflow-hidden rounded-2xl border border-dashed border-white/[0.09] bg-white/[0.015] px-6 py-14 text-center">
+      {/* an idling thread woven behind the content */}
+      <svg
+        className="pointer-events-none absolute inset-x-0 top-0 h-full w-full opacity-[0.12]"
+        preserveAspectRatio="none"
+        viewBox="0 0 400 200"
+        aria-hidden
+      >
+        <path d="M0 100 Q100 40 200 100 T400 100" fill="none" stroke="url(#eg)" strokeWidth="1.5" />
+        <defs>
+          <linearGradient id="eg" x1="0" x2="1">
+            <stop offset="0" stopColor="#8b7cf6" stopOpacity="0" />
+            <stop offset="0.5" stopColor="#38d6e0" />
+            <stop offset="1" stopColor="#8b7cf6" stopOpacity="0" />
+          </linearGradient>
+        </defs>
+      </svg>
+      <div className="relative text-3xl">{emoji}</div>
+      <div className="relative text-sm font-medium text-ink-200">{title}</div>
+      {hint && <div className="relative max-w-sm text-xs leading-relaxed text-ink-400">{hint}</div>}
+      {action && <div className="relative mt-3">{action}</div>}
     </div>
   )
 }
 
 export function ErrorState({ message, onRetry }: { message: string; onRetry?: () => void }) {
   return (
-    <div className="flex flex-col items-center gap-3 rounded-2xl border border-red-900/60 bg-red-950/20 px-6 py-8 text-center">
+    <div className="flex flex-col items-center gap-3 rounded-2xl border border-red-500/25 bg-red-500/[0.06] px-6 py-8 text-center">
       <div className="text-sm text-red-300">{message}</div>
       {onRetry && (
         <button className="btn-secondary" onClick={onRetry}>

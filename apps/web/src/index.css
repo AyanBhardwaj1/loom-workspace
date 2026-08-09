@@ -4,6 +4,14 @@
 
 :root {
   color-scheme: dark;
+  /* semantic thread hues, also usable from inline styles */
+  --thread-agent: #8b7cf6;
+  --thread-tool: #38d6e0;
+  --thread-add: #38e0a5;
+  --thread-del: #f26d6d;
+  --thread-commit: #f4c95d;
+  --thread-suggest: #f0a952;
+  --thread-fork: #e879f9;
 }
 
 html,
@@ -12,8 +20,30 @@ body,
   height: 100%;
 }
 
+/*
+ * The canvas: near-black with a barely-visible dot lattice and one soft radial
+ * glow anchored top-center. Fixed so it doesn't scroll. All decoration lives on
+ * a ::before pseudo-element (opacity only) — cheap and never repaints on scroll.
+ */
 body {
   @apply bg-ink-950 text-ink-100 font-sans antialiased;
+  position: relative;
+}
+body::before {
+  content: '';
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  background-image:
+    radial-gradient(900px 480px at 50% -8%, rgba(139, 124, 246, 0.1), transparent 70%),
+    radial-gradient(rgba(255, 255, 255, 0.028) 1px, transparent 1px);
+  background-size:
+    100% 100%,
+    22px 22px;
+  background-position:
+    center top,
+    center;
 }
 
 /* quiet scrollbars that fit the dark chrome */
@@ -22,51 +52,142 @@ body {
   scrollbar-color: theme('colors.ink.600') transparent;
 }
 *::-webkit-scrollbar {
-  width: 8px;
-  height: 8px;
+  width: 9px;
+  height: 9px;
 }
 *::-webkit-scrollbar-thumb {
   background: theme('colors.ink.600');
-  border-radius: 4px;
+  border-radius: 5px;
+  border: 2px solid transparent;
+  background-clip: content-box;
+}
+*::-webkit-scrollbar-thumb:hover {
+  background: theme('colors.ink.500');
+  background-clip: content-box;
 }
 *::-webkit-scrollbar-track {
   background: transparent;
 }
 
+/* visible, on-brand focus ring for keyboard users everywhere */
+:focus-visible {
+  outline: 2px solid rgba(139, 124, 246, 0.7);
+  outline-offset: 2px;
+  border-radius: 6px;
+}
+
 @layer components {
-  .card {
-    @apply bg-ink-900 border border-ink-700 rounded-2xl;
+  /* ---- surfaces: layered glass, not flat gray ---- */
+  .panel {
+    @apply relative rounded-2xl border border-white/[0.07] bg-white/[0.025];
+    box-shadow:
+      inset 0 1px 0 0 rgba(255, 255, 255, 0.05),
+      0 1px 2px 0 rgba(0, 0, 0, 0.4);
   }
+  .panel-hover {
+    @apply transition-colors duration-200 hover:border-white/[0.14] hover:bg-white/[0.045];
+  }
+  /* .card kept as an alias so existing markup upgrades for free */
+  .card {
+    @apply relative rounded-2xl border border-white/[0.07] bg-white/[0.025];
+    box-shadow:
+      inset 0 1px 0 0 rgba(255, 255, 255, 0.05),
+      0 1px 2px 0 rgba(0, 0, 0, 0.4);
+  }
+
+  /* ---- chips / terminal-readout labels ---- */
   .chip {
-    @apply inline-flex items-center gap-1.5 rounded-full border border-ink-600 bg-ink-800 px-2.5 py-0.5 text-xs text-ink-200;
+    @apply inline-flex items-center gap-1.5 rounded-full border border-white/[0.09] bg-white/[0.04] px-2.5 py-0.5 text-xs text-ink-200;
   }
   .mono-chip {
-    @apply inline-flex items-center rounded-md border border-ink-600 bg-ink-850 px-2 py-0.5 font-mono text-[11px] text-ink-300;
+    @apply inline-flex items-center rounded-md border border-white/[0.09] bg-black/30 px-2 py-0.5 font-mono text-[11px] tabular-nums tracking-tight text-ink-300;
   }
+  .micro-label {
+    @apply font-mono text-[10px] font-medium uppercase tracking-[0.16em] text-ink-400;
+  }
+
+  /* ---- buttons: spring hover / press, glow on primary ---- */
   .btn {
-    @apply inline-flex items-center justify-center gap-2 rounded-xl font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed;
+    @apply inline-flex select-none items-center justify-center gap-2 rounded-xl font-medium transition-[transform,background-color,border-color,box-shadow,color] duration-150 will-change-transform active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-50 disabled:active:scale-100;
   }
   .btn-primary {
-    @apply btn bg-accent text-ink-950 hover:bg-accent-soft px-4 py-2 text-sm;
+    @apply btn bg-accent px-4 py-2 text-sm text-ink-950 hover:-translate-y-px hover:bg-accent-soft;
+  }
+  .btn-primary:hover:not(:disabled) {
+    box-shadow:
+      0 0 0 1px rgba(139, 124, 246, 0.4),
+      0 0 24px -4px rgba(139, 124, 246, 0.5);
   }
   .btn-secondary {
-    @apply btn bg-ink-800 text-ink-100 border border-ink-600 hover:border-ink-400 px-4 py-2 text-sm;
+    @apply btn border border-white/[0.1] bg-white/[0.04] px-4 py-2 text-sm text-ink-100 hover:-translate-y-px hover:border-white/25 hover:bg-white/[0.07];
   }
   .btn-ghost {
-    @apply btn text-ink-300 hover:text-ink-100 hover:bg-ink-800 px-3 py-1.5 text-sm;
+    @apply btn px-3 py-1.5 text-sm text-ink-300 hover:bg-white/[0.06] hover:text-ink-100;
   }
   .input {
-    @apply w-full rounded-xl border border-ink-600 bg-ink-850 px-3.5 py-2.5 text-sm text-ink-100 placeholder:text-ink-400 outline-none focus:border-accent transition-colors;
+    @apply w-full rounded-xl border border-white/[0.1] bg-black/25 px-3.5 py-2.5 text-sm text-ink-100 outline-none transition-[border-color,box-shadow] duration-150 placeholder:text-ink-400 focus:border-accent/70 focus:shadow-[0_0_0_3px_rgba(139,124,246,0.14)];
   }
+
+  /* ---- skeleton: a sweeping shimmer bar ---- */
   .skeleton {
-    @apply animate-pulse rounded-lg bg-ink-800;
+    @apply relative overflow-hidden rounded-lg bg-white/[0.04];
+  }
+  .skeleton::after {
+    content: '';
+    @apply absolute inset-0 animate-shimmer-x;
+    background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.06), transparent);
+  }
+
+  /* ---- semantic left-edge glow for stream rows (opacity-only, no box-shadow) ---- */
+  .glow-edge {
+    @apply relative;
+  }
+  .glow-edge::before {
+    content: '';
+    @apply absolute inset-y-1 left-0 w-[2px] rounded-full opacity-70;
+    background: var(--edge, var(--thread-agent));
+    box-shadow: 0 0 8px 0 var(--edge, var(--thread-agent));
+  }
+
+  /* ---- hairline gradient separator ---- */
+  .hairline {
+    @apply h-px w-full border-0;
+    background: linear-gradient(90deg, transparent, rgba(139, 124, 246, 0.35), rgba(56, 214, 224, 0.25), transparent);
   }
 }
 
-/* typing caret for streaming assistant text */
+/* overlay + panel entrances */
+.anim-overlay-in {
+  animation: overlay-in 0.18s ease-out both;
+}
+@keyframes overlay-in {
+  from {
+    opacity: 0;
+  }
+}
+.anim-dialog-in {
+  animation: dialog-in 0.22s cubic-bezier(0.16, 0.8, 0.3, 1) both;
+}
+@keyframes dialog-in {
+  from {
+    opacity: 0;
+    transform: translateY(8px) scale(0.97);
+  }
+}
+.anim-slide-in {
+  animation: slide-in 0.26s cubic-bezier(0.16, 0.8, 0.3, 1) both;
+}
+@keyframes slide-in {
+  from {
+    transform: translateX(24px);
+    opacity: 0;
+  }
+}
+
+/* streaming caret for in-flight assistant text */
 .streaming-caret::after {
   content: '▍';
-  @apply text-accent;
+  color: var(--thread-agent);
   animation: caret-blink 1s steps(2) infinite;
 }
 @keyframes caret-blink {
@@ -75,26 +196,63 @@ body {
   }
 }
 
-/* three-dot thinking indicator */
+/*
+ * Thinking indicator — a weaving shuttle: two orbiting nodes on a short track.
+ * Keeps the old `.thinking-dots span` markup working (three children) but
+ * restyles them into a woven pulse instead of bouncing dots.
+ */
+.thinking-dots {
+  @apply inline-flex items-center gap-[3px];
+}
 .thinking-dots span {
-  @apply inline-block h-1.5 w-1.5 rounded-full bg-accent;
-  animation: dot-bounce 1.2s ease-in-out infinite;
+  @apply inline-block h-1.5 w-1.5 rounded-full;
+  background: var(--thread-agent);
+  animation: thread-weave 1.1s ease-in-out infinite;
 }
 .thinking-dots span:nth-child(2) {
-  animation-delay: 0.15s;
+  animation-delay: 0.18s;
+  background: var(--thread-tool);
 }
 .thinking-dots span:nth-child(3) {
-  animation-delay: 0.3s;
+  animation-delay: 0.36s;
 }
-@keyframes dot-bounce {
+@keyframes thread-weave {
   0%,
-  60%,
   100% {
-    transform: translateY(0);
-    opacity: 0.5;
+    transform: translateY(0) scale(0.8);
+    opacity: 0.4;
   }
-  30% {
-    transform: translateY(-3px);
+  50% {
+    transform: translateY(-3px) scale(1);
     opacity: 1;
+  }
+}
+
+/* signature loader: a woven double-ring */
+.loader {
+  @apply relative inline-block rounded-full;
+  border: 2px solid rgba(255, 255, 255, 0.08);
+  border-top-color: var(--thread-agent);
+  border-right-color: var(--thread-tool);
+  animation: spin-slow 0.9s linear infinite;
+}
+@keyframes spin-slow {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/*
+ * Honor reduced-motion: kill every animation and transition, drop the ambient
+ * background glow to a flat tone. Accessibility is non-negotiable.
+ */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+    scroll-behavior: auto !important;
   }
 }
