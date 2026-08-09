@@ -42,19 +42,25 @@ export function ProjectShell() {
     <ProjectContext.Provider value={{ projectId, detailQuery, feed }}>
       <div className="flex h-full">
         {/* left rail */}
-        <nav className="flex w-14 shrink-0 flex-col items-center gap-1 border-r border-ink-700 bg-ink-900 py-3">
-          <Link to="/" title="All projects" className="mb-1 text-xl transition-transform hover:scale-110">
+        <nav className="flex w-14 shrink-0 flex-col items-center gap-1 border-r border-white/[0.07] bg-ink-950/50 py-3 backdrop-blur-xl">
+          <Link
+            to="/"
+            title="All projects"
+            className="mb-1 text-xl transition-transform duration-150 hover:scale-110 hover:drop-shadow-[0_0_10px_rgba(139,124,246,0.5)]"
+          >
             🧵
           </Link>
-          <div className="mb-2 h-px w-8 bg-ink-700" />
+          <div className="hairline mb-2 w-8" />
           <NavLink
             to={`/p/${projectId}`}
             end
             title="Dashboard"
             className={({ isActive }) =>
               clsx(
-                'flex h-10 w-10 items-center justify-center rounded-xl text-lg transition-colors',
-                isActive ? 'bg-accent-faint text-accent' : 'text-ink-400 hover:bg-ink-800 hover:text-ink-100',
+                'relative flex h-10 w-10 items-center justify-center rounded-xl text-lg transition-all duration-150',
+                isActive
+                  ? 'bg-accent/15 text-accent shadow-[inset_0_0_0_1px_rgba(139,124,246,0.3)]'
+                  : 'text-ink-400 hover:bg-white/[0.06] hover:text-ink-100',
               )
             }
           >
@@ -65,8 +71,10 @@ export function ProjectShell() {
             title="Version history"
             className={({ isActive }) =>
               clsx(
-                'flex h-10 w-10 items-center justify-center rounded-xl text-lg transition-colors',
-                isActive ? 'bg-accent-faint text-accent' : 'text-ink-400 hover:bg-ink-800 hover:text-ink-100',
+                'relative flex h-10 w-10 items-center justify-center rounded-xl text-lg transition-all duration-150',
+                isActive
+                  ? 'bg-accent/15 text-accent shadow-[inset_0_0_0_1px_rgba(139,124,246,0.3)]'
+                  : 'text-ink-400 hover:bg-white/[0.06] hover:text-ink-100',
               )
             }
           >
@@ -76,14 +84,16 @@ export function ProjectShell() {
             <button
               onClick={() => setAiOpen(true)}
               title="AI provider settings"
-              className="flex h-10 w-10 items-center justify-center rounded-xl text-lg text-ink-400 transition-colors hover:bg-ink-800 hover:text-ink-100"
+              className="flex h-10 w-10 items-center justify-center rounded-xl text-lg text-ink-400 transition-all duration-150 hover:bg-white/[0.06] hover:text-ink-100"
             >
               ⚙
             </button>
             {feed.presence.length > 0 && (
               <div className="flex flex-col items-center gap-1.5" title="Online now">
                 {feed.presence.slice(0, 4).map((p) => (
-                  <Avatar key={p.userId} name={p.name} color={p.avatarColor} size="sm" title={`${p.name} is online`} />
+                  <span key={p.userId} className="animate-breathe">
+                    <Avatar name={p.name} color={p.avatarColor} size="sm" title={`${p.name} is online`} />
+                  </span>
                 ))}
               </div>
             )}

@@ -116,27 +116,37 @@ export function AiSettingsDialog({ open, onClose }: { open: boolean; onClose: ()
     <Dialog open={open} onClose={onClose} title="AI provider">
       <div className="space-y-4">
         {current && (
-          <div className="rounded-xl border border-ink-700 bg-ink-850 px-3.5 py-2.5 text-xs">
-            <span className="text-ink-400">Currently: </span>
-            {current.mode === 'mock' ? (
-              <span className="text-ink-100">built-in mock agent (free, no key)</span>
-            ) : (
-              <span className="text-accent-soft">
-                {current.mode} · {current.model} · key {current.maskedKey}
-                {current.source === 'env' ? ' (from server env)' : ''}
-              </span>
-            )}
+          <div className="glow-edge rounded-xl border border-white/[0.08] bg-white/[0.02] px-3.5 py-2.5 pl-4 text-xs"
+            style={{ ['--edge' as string]: current.mode === 'mock' ? '#585874' : 'var(--thread-agent)' }}
+          >
+            <span className="micro-label">currently</span>
+            <div className="mt-1">
+              {current.mode === 'mock' ? (
+                <span className="text-ink-100">🤖 built-in mock agent (free, no key)</span>
+              ) : (
+                <span className="text-accent-soft">
+                  ✨ {current.mode} · <span className="font-mono">{current.model}</span> · key{' '}
+                  <span className="font-mono">{current.maskedKey}</span>
+                  {current.source === 'env' ? ' (from server env)' : ''}
+                </span>
+              )}
+            </div>
           </div>
         )}
 
-        <div className="flex gap-2">
+        {/* provider segmented control */}
+        <div className="relative flex rounded-xl border border-white/[0.1] bg-black/25 p-0.5">
+          <span
+            className="absolute inset-y-0.5 w-[calc(50%-2px)] rounded-[10px] bg-accent transition-transform duration-200 ease-[cubic-bezier(0.16,0.8,0.3,1)]"
+            style={{ transform: provider === 'openrouter' ? 'translateX(100%)' : 'translateX(0)' }}
+          />
           {(Object.keys(PROVIDER_INFO) as AiProviderKind[]).map((p) => (
             <button
               key={p}
               onClick={() => setProvider(p)}
               className={clsx(
-                'btn flex-1 px-3 py-2 text-xs',
-                provider === p ? 'bg-accent text-ink-950' : 'btn-secondary',
+                'relative z-10 flex-1 px-3 py-2 text-xs font-medium transition-colors duration-200',
+                provider === p ? 'text-ink-950' : 'text-ink-300 hover:text-ink-100',
               )}
             >
               {PROVIDER_INFO[p].label}

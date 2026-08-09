@@ -59,10 +59,10 @@ export function SpectatorSidebar({
   }
 
   return (
-    <div className="flex h-full w-80 shrink-0 flex-col border-l border-ink-700 bg-ink-900/60 xl:w-96">
-      <div className="flex items-center gap-2 border-b border-ink-700 px-3 py-2.5">
-        <span className="text-xs font-semibold uppercase tracking-wider text-ink-300">👁 Spectate</span>
-        <button onClick={onClose} className="ml-auto text-ink-400 hover:text-ink-100" title="Hide sidebar">
+    <div className="flex h-full w-80 shrink-0 flex-col border-l border-white/[0.07] bg-ink-950/50 backdrop-blur-xl xl:w-96">
+      <div className="flex items-center gap-2 border-b border-white/[0.07] px-3 py-2.5">
+        <span className="micro-label">👁 spectate</span>
+        <button onClick={onClose} className="ml-auto text-ink-400 transition-colors hover:text-ink-100" title="Hide sidebar">
           ✕
         </button>
       </div>

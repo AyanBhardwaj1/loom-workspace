@@ -43,12 +43,19 @@ export function PreviewPane({
   }, [reloadKey])
 
   return (
-    <div className="flex h-full min-w-0 flex-col border-l border-ink-700 bg-white/[0.02]">
-      <div className="flex items-center gap-2 border-b border-ink-700 bg-ink-900 px-3 py-2">
-        <span className="text-xs font-semibold uppercase tracking-wider text-ink-300">▶ Preview</span>
-        {label && <span className="truncate text-[11px] text-ink-400">{label}</span>}
+    <div className="flex h-full min-w-0 flex-col border-l border-white/[0.07] bg-white/[0.02]">
+      <div className="relative flex items-center gap-2 overflow-hidden border-b border-white/[0.07] bg-ink-950/60 px-3 py-2 backdrop-blur-xl">
+        {/* a light sweep across the header when the preview updates */}
         {flash && (
-          <span className="animate-highlight rounded-full bg-emerald-500/15 px-2 py-0.5 text-[10px] text-emerald-300">
+          <span
+            className="animate-sweep pointer-events-none absolute inset-y-0 left-0 w-1/3"
+            style={{ background: 'linear-gradient(90deg, transparent, rgba(56,224,165,0.25), transparent)' }}
+          />
+        )}
+        <span className="micro-label">▶ preview</span>
+        {label && <span className="truncate font-mono text-[11px] text-ink-400">{label}</span>}
+        {flash && (
+          <span className="rounded-full border border-thread-add/30 bg-thread-add/10 px-2 py-0.5 text-[10px] text-thread-add">
             updated
           </span>
         )}
