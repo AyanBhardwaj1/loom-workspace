@@ -5,7 +5,8 @@ import { createServices } from './services'
 
 async function main(): Promise<void> {
   const config = loadConfig()
-  const services = await createServices(config)
+  // LOOM_FAST_MOCK=1 removes the mock agent's artificial delays (used by the E2E)
+  const services = await createServices(config, { fastMock: process.env.LOOM_FAST_MOCK === '1' })
   const server = await startServer(services)
 
   const mode =

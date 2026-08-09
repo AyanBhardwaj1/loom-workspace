@@ -21,3 +21,7 @@ data/
 
 # os
 .DS_Store
+
+# playwright
+test-results/
+playwright-report/

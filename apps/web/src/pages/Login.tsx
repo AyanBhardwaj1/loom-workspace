@@ -58,6 +58,7 @@ export function Login() {
                       setDevBusy(null)
                     }
                   }}
+                  data-testid={`quick-login-${u.email}`}
                   className="flex items-center gap-3 rounded-xl border border-ink-700 bg-ink-850 px-3 py-2 text-left transition-colors hover:border-accent disabled:opacity-50"
                 >
                   <Avatar name={u.name} color={u.avatarColor} size="sm" />

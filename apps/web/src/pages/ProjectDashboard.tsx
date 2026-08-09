@@ -224,6 +224,7 @@ function ModuleCard({
   const navigate = useNavigate()
   return (
     <button
+      data-testid={`module-card-${module.name}`}
       onClick={() => navigate(`/p/${projectId}/m/${module.id}`)}
       className={clsx(
         'card group relative flex min-h-[9.5rem] flex-col p-5 text-left transition-colors hover:border-accent',
