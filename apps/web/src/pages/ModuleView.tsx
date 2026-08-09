@@ -2,13 +2,14 @@ import { useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
 import type { SessionSummary } from '@loom/shared'
+import { formatCost, formatTokens } from '@loom/shared'
 import { AgentStatusIndicator, Avatar, CardSkeleton, EmptyState, StatusPill } from '../components/ui'
 import { api } from '../lib/api'
 import { timeAgo, useNow } from '../lib/time'
 import { useAuth } from '../state/auth'
 import { useProject } from './ProjectShell'
 
-type SessionWithCount = SessionSummary & { changeCount: number }
+type SessionWithCount = SessionSummary & { changeCount: number; tokens: number; costUsd: number }
 
 export function ModuleView() {
   const { moduleId } = useParams<{ moduleId: string }>()
@@ -63,6 +64,8 @@ export function ModuleView() {
   const sessions = sessionsQuery.data?.sessions ?? []
   const active = sessions.filter((s) => s.status !== 'ended')
   const past = sessions.filter((s) => s.status === 'ended')
+  const moduleTokens = sessions.reduce((n, s) => n + (s.tokens ?? 0), 0)
+  const moduleCost = sessions.reduce((n, s) => n + (s.costUsd ?? 0), 0)
 
   return (
     <div className="mx-auto w-full max-w-3xl flex-1 overflow-y-auto px-8 py-7">
@@ -78,9 +81,17 @@ export function ModuleView() {
           </div>
           <p className="mt-0.5 text-sm text-ink-300">{module.description}</p>
         </div>
-        <button className="btn-primary shrink-0" onClick={() => void startSession()} disabled={starting}>
-          {starting ? 'Cutting branch…' : '▶ Start session'}
-        </button>
+        <div className="flex shrink-0 items-center gap-3">
+          {moduleTokens > 0 && (
+            <span className="chip text-[10px]" title="Total AI usage across this module's sessions">
+              ▦ {formatTokens(moduleTokens)} tok
+              {moduleCost > 0 && <span className="ml-1 text-emerald-300">· {formatCost(moduleCost)}</span>}
+            </span>
+          )}
+          <button className="btn-primary" onClick={() => void startSession()} disabled={starting}>
+            {starting ? 'Cutting branch…' : '▶ Start session'}
+          </button>
+        </div>
       </header>
 
       {sessionsQuery.isLoading ? (
@@ -169,7 +180,16 @@ export function ModuleView() {
                         {s.parentSessionId && <span className="chip text-[10px]">⑂ fork</span>}
                       </div>
                       <div className="text-[11px] text-ink-400">
-                        {s.changeCount} change{s.changeCount === 1 ? '' : 's'} · ended {timeAgo(s.lastEventAt, now)}
+                        {s.changeCount} change{s.changeCount === 1 ? '' : 's'}
+                        {s.tokens > 0 && (
+                          <>
+                            {' · '}
+                            {formatTokens(s.tokens)} tok
+                            {s.costUsd > 0 && ` · ${formatCost(s.costUsd)}`}
+                          </>
+                        )}
+                        {' · ended '}
+                        {timeAgo(s.lastEventAt, now)}
                       </div>
                     </div>
                     <span className="text-xs text-ink-400">view transcript →</span>

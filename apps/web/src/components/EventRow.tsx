@@ -77,6 +77,9 @@ export function toDisplayItems(events: SessionEvent[]): DisplayItem[] {
       case 'suggestion_decision':
         // folded into its suggestion item above
         break
+      case 'usage':
+        // metadata for the cost chip, not a chat row
+        break
       default:
         break
     }

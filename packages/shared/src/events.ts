@@ -79,6 +79,14 @@ export const suggestionDecisionPayload = z.object({
   decision: z.enum(['accepted', 'dismissed']),
   decidedByName: z.string(),
 })
+/** Token usage + estimated cost for one completed turn (mock fabricates plausible numbers). */
+export const usagePayload = z.object({
+  inputTokens: z.number().int().nonnegative(),
+  outputTokens: z.number().int().nonnegative(),
+  costUsd: z.number().nonnegative(),
+  model: z.string().nullable(),
+  provider: z.string(),
+})
 
 // ---------------------------------------------------------------------------
 // Event envelope (discriminated union on `type`)
@@ -106,6 +114,7 @@ export const sessionEventSchema = z.discriminatedUnion('type', [
   z.object({ ...base, type: z.literal('fork_marker'), payload: forkMarkerPayload }),
   z.object({ ...base, type: z.literal('suggestion'), payload: suggestionPayload }),
   z.object({ ...base, type: z.literal('suggestion_decision'), payload: suggestionDecisionPayload }),
+  z.object({ ...base, type: z.literal('usage'), payload: usagePayload }),
 ])
 
 export type SessionEvent = z.infer<typeof sessionEventSchema>
@@ -126,6 +135,7 @@ export const eventPayloadSchemas = {
   fork_marker: forkMarkerPayload,
   suggestion: suggestionPayload,
   suggestion_decision: suggestionDecisionPayload,
+  usage: usagePayload,
 } as const
 
 /** Event types that are persisted to the DB (everything except assistant_delta). */
@@ -140,6 +150,7 @@ export const PERSISTED_EVENT_TYPES: SessionEventType[] = [
   'fork_marker',
   'suggestion',
   'suggestion_decision',
+  'usage',
 ]
 
 /** A short human line describing an event, for dashboard gists and activity feeds. */
@@ -175,6 +186,8 @@ export function eventGist(event: SessionEvent): string {
       return `${event.payload.suggesterName} suggested: “${truncate(event.payload.text, 56)}”`
     case 'suggestion_decision':
       return `suggestion ${event.payload.decision}`
+    case 'usage':
+      return `used ${event.payload.inputTokens + event.payload.outputTokens} tokens`
   }
 }
 

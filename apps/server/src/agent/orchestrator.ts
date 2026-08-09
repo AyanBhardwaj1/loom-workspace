@@ -4,6 +4,7 @@ import type { ServerConfig } from '../env'
 import type { ProjectService } from '../projects/service'
 import type { SessionService } from '../sessions/service'
 import { agentSystemPrompt, buildTranscript, countAssistantTurns } from './context'
+import { estimateCostUsd } from './pricing'
 import type { AgentRuntime } from './runtime'
 import { ToolExecutor } from './tools'
 
@@ -146,6 +147,8 @@ export class AgentOrchestrator {
     }
 
     let sawError = false
+    let inputTokens = 0
+    let outputTokens = 0
     try {
       for await (const item of provider.runTurn(ctx)) {
         switch (item.kind) {
@@ -164,6 +167,10 @@ export class AgentOrchestrator {
               await sessions.appendEvent(session.id, 'assistant_message', { text: item.fullText })
             }
             break
+          case 'usage':
+            inputTokens += item.inputTokens
+            outputTokens += item.outputTokens
+            break
           case 'error':
             sawError = true
             await sessions.appendEvent(session.id, 'status', { status: 'error', note: item.message })
@@ -174,6 +181,17 @@ export class AgentOrchestrator {
       // an abort surfaces here as the stream throws — swallow it (handled
       // below); anything else is a real failure and re-thrown to the caller
       if (!signal.aborted) throw err
+    }
+
+    // record token usage + estimated cost for the turn (even a stopped one)
+    if (inputTokens > 0 || outputTokens > 0) {
+      await sessions.appendEvent(session.id, 'usage', {
+        inputTokens,
+        outputTokens,
+        costUsd: estimateCostUsd(runtime.mode, runtime.model, inputTokens, outputTokens),
+        model: runtime.model,
+        provider: runtime.mode,
+      })
     }
 
     // commit whatever the agent managed to write, even on a stop

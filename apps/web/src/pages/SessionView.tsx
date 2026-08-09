@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
+import { formatCost, formatTokens, sumUsage } from '@loom/shared'
 import { AgentModeChip } from '../components/AiSettingsDialog'
 import { ChatLog } from '../components/ChatLog'
 import { Composer } from '../components/Composer'
@@ -62,6 +63,7 @@ export function SessionView() {
     return last
   }, [stream.events])
   const hasBuiltAnything = previewReloadKey > 0
+  const usage = useMemo(() => sumUsage(stream.events), [stream.events])
 
   const fork = async (atEventId?: string) => {
     if (!sessionId || forking) return
@@ -133,6 +135,15 @@ export function SessionView() {
             </Link>
           )}
           <div className="ml-auto flex items-center gap-3">
+            {usage.inputTokens + usage.outputTokens > 0 && (
+              <span
+                className="chip hidden text-[10px] lg:inline-flex"
+                title={`${usage.inputTokens.toLocaleString()} in · ${usage.outputTokens.toLocaleString()} out over ${usage.turns} turn${usage.turns === 1 ? '' : 's'}`}
+              >
+                ▦ {formatTokens(usage.inputTokens + usage.outputTokens)} tok
+                {usage.costUsd > 0 && <span className="ml-1 text-emerald-300">· {formatCost(usage.costUsd)}</span>}
+              </span>
+            )}
             <span className="hidden xl:inline-flex">
               <AgentModeChip />
             </span>

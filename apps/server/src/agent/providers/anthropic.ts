@@ -59,6 +59,13 @@ export class AnthropicAgentProvider implements AgentProvider {
         }
 
         const final = await stream.finalMessage()
+        if (final.usage) {
+          yield {
+            kind: 'usage',
+            inputTokens: final.usage.input_tokens ?? 0,
+            outputTokens: final.usage.output_tokens ?? 0,
+          }
+        }
         for (const block of final.content) {
           if (block.type === 'text' && block.text.trim()) {
             fullText.push(block.text)

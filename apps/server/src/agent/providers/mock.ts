@@ -29,7 +29,19 @@ export class MockAgentProvider implements AgentProvider {
         yield item
       }
       // keep whatever the agent said before being stopped
-      if (parts.join('').trim()) yield { kind: 'message_done', fullText: parts.join('') }
+      const out = parts.join('')
+      if (out.trim()) yield { kind: 'message_done', fullText: out }
+      // fabricate plausible token usage so the cost UI is exercised without a key
+      const inputChars =
+        ctx.userMessage.length +
+        ctx.transcript.reduce((n, e) => n + e.text.length, 0) +
+        ctx.fileTree.join('\n').length +
+        400 // system prompt overhead
+      yield {
+        kind: 'usage',
+        inputTokens: Math.max(1, Math.round(inputChars / 4)),
+        outputTokens: Math.max(1, Math.round(out.length / 4)),
+      }
     } catch (err) {
       if (ctx.signal.aborted) return
       yield { kind: 'error', message: err instanceof Error ? err.message : String(err) }

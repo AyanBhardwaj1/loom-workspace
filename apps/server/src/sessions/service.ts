@@ -1,5 +1,5 @@
 import path from 'node:path'
-import { and, asc, desc, eq, gt, ne, sql } from 'drizzle-orm'
+import { and, asc, desc, eq, gt, inArray, ne, sql } from 'drizzle-orm'
 import { ulid } from 'ulid'
 import {
   eventGist,
@@ -498,5 +498,28 @@ export class SessionService {
       .from(t.changes)
       .where(eq(t.changes.sessionId, sessionId))
     return Number(rows[0]?.n ?? 0)
+  }
+
+  /** Cumulative token + cost totals per session, summed from `usage` events. */
+  async usageTotalsForSessions(sessionIds: string[]): Promise<Map<string, { tokens: number; costUsd: number }>> {
+    const out = new Map<string, { tokens: number; costUsd: number }>()
+    if (sessionIds.length === 0) return out
+    const { db, t } = this.dbh
+    const rows = await db
+      .select({ sessionId: t.sessionEvents.sessionId, payload: t.sessionEvents.payload })
+      .from(t.sessionEvents)
+      .where(and(inArray(t.sessionEvents.sessionId, sessionIds), eq(t.sessionEvents.type, 'usage')))
+    for (const row of rows) {
+      try {
+        const p = JSON.parse(row.payload) as { inputTokens: number; outputTokens: number; costUsd: number }
+        const cur = out.get(row.sessionId) ?? { tokens: 0, costUsd: 0 }
+        cur.tokens += (p.inputTokens ?? 0) + (p.outputTokens ?? 0)
+        cur.costUsd += p.costUsd ?? 0
+        out.set(row.sessionId, cur)
+      } catch {
+        // skip malformed usage row
+      }
+    }
+    return out
   }
 }

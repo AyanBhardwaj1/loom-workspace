@@ -68,7 +68,13 @@ export class OpenAICompatProvider implements AgentProvider {
             'HTTP-Referer': 'https://github.com/loom-dev/loom',
             'X-Title': 'Loom',
           },
-          body: JSON.stringify({ model: this.opts.model, messages, tools, stream: true }),
+          body: JSON.stringify({
+            model: this.opts.model,
+            messages,
+            tools,
+            stream: true,
+            stream_options: { include_usage: true },
+          }),
           signal: ctx.signal,
         })
         if (!res.ok || !res.body) {
@@ -87,6 +93,14 @@ export class OpenAICompatProvider implements AgentProvider {
             chunk = JSON.parse(data)
           } catch {
             continue
+          }
+          const usage = (chunk as { usage?: { prompt_tokens?: number; completion_tokens?: number } }).usage
+          if (usage) {
+            yield {
+              kind: 'usage',
+              inputTokens: usage.prompt_tokens ?? 0,
+              outputTokens: usage.completion_tokens ?? 0,
+            }
           }
           const delta = (chunk as { choices?: Array<{ delta?: Record<string, unknown> }> }).choices?.[0]?.delta
           if (!delta) continue

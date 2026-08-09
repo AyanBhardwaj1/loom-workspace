@@ -10,6 +10,8 @@ export type AgentStreamItem =
   | { kind: 'tool_call'; name: string; input: Record<string, unknown> }
   | { kind: 'message_done'; fullText: string }
   | { kind: 'error'; message: string }
+  /** Token usage for one API round; the orchestrator sums these across a turn. */
+  | { kind: 'usage'; inputTokens: number; outputTokens: number }
 
 export interface AgentToolExecution {
   /** Short human summary for the tool_result event ("Wrote 42 lines to index.html"). */

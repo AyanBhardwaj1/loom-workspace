@@ -20,6 +20,43 @@ export function shortId(len = 6): string {
   return out
 }
 
+export interface UsageTotals {
+  inputTokens: number
+  outputTokens: number
+  costUsd: number
+  /** number of turns that reported usage */
+  turns: number
+}
+
+/** Sum all `usage` events into running totals (works on any event array). */
+export function sumUsage(events: Array<{ type: string; payload: unknown }>): UsageTotals {
+  const totals: UsageTotals = { inputTokens: 0, outputTokens: 0, costUsd: 0, turns: 0 }
+  for (const e of events) {
+    if (e.type !== 'usage') continue
+    const p = e.payload as { inputTokens: number; outputTokens: number; costUsd: number }
+    totals.inputTokens += p.inputTokens
+    totals.outputTokens += p.outputTokens
+    totals.costUsd += p.costUsd
+    totals.turns += 1
+  }
+  return totals
+}
+
+/** Compact token count: 940 → "940", 12_500 → "12.5k", 3_400_000 → "3.4M". */
+export function formatTokens(n: number): string {
+  if (n < 1000) return String(n)
+  if (n < 1_000_000) return `${(n / 1000).toFixed(n < 10_000 ? 1 : 0)}k`
+  return `${(n / 1_000_000).toFixed(1)}M`
+}
+
+/** Estimated USD cost, with enough precision to be meaningful at small sizes. */
+export function formatCost(usd: number): string {
+  if (usd === 0) return '$0.00'
+  if (usd < 0.01) return `$${usd.toFixed(4)}`
+  if (usd < 1) return `$${usd.toFixed(3)}`
+  return `$${usd.toFixed(2)}`
+}
+
 export function timeAgo(iso: string | null | undefined, now: number = Date.now()): string {
   if (!iso) return '—'
   const then = new Date(iso).getTime()

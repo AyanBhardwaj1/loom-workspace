@@ -29,10 +29,17 @@ export async function sessionRoutes(app: FastifyInstance, services: Services): P
       return reply.code(403).send({ error: 'You are not a member of this project' })
     }
     const rows = await sessions.listSessionsForModule(id)
+    const usage = await sessions.usageTotalsForSessions(rows.map((r) => r.id))
     const out = []
     for (const row of rows) {
       const summary = await sessions.toSummary(row)
-      out.push({ ...summary, changeCount: await sessions.countChangesForSession(row.id) })
+      const u = usage.get(row.id) ?? { tokens: 0, costUsd: 0 }
+      out.push({
+        ...summary,
+        changeCount: await sessions.countChangesForSession(row.id),
+        tokens: u.tokens,
+        costUsd: u.costUsd,
+      })
     }
     return { sessions: out }
   })
