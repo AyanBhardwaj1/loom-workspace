@@ -3,6 +3,7 @@ import { useQuery } from '@tanstack/react-query'
 import { clsx } from 'clsx'
 import type { BranchInfo, ChangeSummary, MergeResult } from '@loom/shared'
 import { DiffStats, UnifiedDiffView } from '../components/EventRow'
+import { PreviewPane } from '../components/PreviewPane'
 import { Avatar, CardSkeleton, EmptyState, SlideOver, Spinner } from '../components/ui'
 import { api } from '../lib/api'
 import { timeAgo, useNow } from '../lib/time'
@@ -15,6 +16,7 @@ export function HistoryPage() {
   const now = useNow(15_000)
   const [lens, setLens] = useState<Lens>('simple')
   const [selected, setSelected] = useState<ChangeSummary | null>(null)
+  const [mainPreview, setMainPreview] = useState(false)
 
   const changesQuery = useQuery({
     queryKey: ['changes', projectId],
@@ -38,19 +40,24 @@ export function HistoryPage() {
               Every change the team's agents made — in plain English, or in git terms. Your call.
             </p>
           </div>
-          <div className="ml-auto flex overflow-hidden rounded-xl border border-ink-600">
-            {(['simple', 'technical'] as const).map((l) => (
-              <button
-                key={l}
-                onClick={() => setLens(l)}
-                className={clsx(
-                  'px-3.5 py-1.5 text-xs font-medium capitalize transition-colors',
-                  lens === l ? 'bg-accent text-ink-950' : 'bg-ink-850 text-ink-300 hover:text-ink-100',
-                )}
-              >
-                {l}
-              </button>
-            ))}
+          <div className="ml-auto flex items-center gap-2">
+            <button onClick={() => setMainPreview(true)} className="btn-secondary text-xs" title="Preview the merged main product">
+              ▶ Preview main
+            </button>
+            <div className="flex overflow-hidden rounded-xl border border-ink-600">
+              {(['simple', 'technical'] as const).map((l) => (
+                <button
+                  key={l}
+                  onClick={() => setLens(l)}
+                  className={clsx(
+                    'px-3.5 py-1.5 text-xs font-medium capitalize transition-colors',
+                    lens === l ? 'bg-accent text-ink-950' : 'bg-ink-850 text-ink-300 hover:text-ink-100',
+                  )}
+                >
+                  {l}
+                </button>
+              ))}
+            </div>
           </div>
         </header>
 
@@ -113,6 +120,17 @@ export function HistoryPage() {
       </div>
 
       <ChangeSlideOver projectId={projectId} change={selected} onClose={() => setSelected(null)} />
+
+      <SlideOver
+        open={mainPreview}
+        onClose={() => setMainPreview(false)}
+        wide
+        title={<div className="text-sm font-medium">Live preview — merged main</div>}
+      >
+        <div className="h-[70vh] overflow-hidden rounded-xl border border-ink-700">
+          <PreviewPane src={`/preview/main/${projectId}/`} reloadKey={changes.length} label="main branch" />
+        </div>
+      </SlideOver>
     </div>
   )
 }

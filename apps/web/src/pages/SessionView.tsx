@@ -3,6 +3,7 @@ import { Link, useNavigate, useParams } from 'react-router-dom'
 import { AgentModeChip } from '../components/AiSettingsDialog'
 import { ChatLog } from '../components/ChatLog'
 import { Composer } from '../components/Composer'
+import { PreviewPane } from '../components/PreviewPane'
 import { SpectatorSidebar } from '../components/SpectatorSidebar'
 import { AgentStatusIndicator, Avatar, Spinner } from '../components/ui'
 import { api } from '../lib/api'
@@ -18,6 +19,7 @@ export function SessionView() {
   const navigate = useNavigate()
   const stream = useSessionStream(sessionId ?? null)
   const [sidebarOpen, setSidebarOpen] = useState(true)
+  const [previewOpen, setPreviewOpen] = useState(false)
   const [forking, setForking] = useState(false)
   const [ending, setEnding] = useState(false)
   const [serverError, setServerError] = useState<string | null>(null)
@@ -49,6 +51,15 @@ export function SessionView() {
     () => feed.presence.filter((p) => p.viewing === sessionId).length,
     [feed.presence, sessionId],
   )
+  // reload the preview whenever a new commit lands (latest commit seq)
+  const previewReloadKey = useMemo(() => {
+    let last = 0
+    for (const e of stream.events) {
+      if (e.type === 'commit' && (e.seq ?? 0) > last) last = e.seq ?? 0
+    }
+    return last
+  }, [stream.events])
+  const hasBuiltAnything = previewReloadKey > 0
 
   const fork = async (atEventId?: string) => {
     if (!sessionId || forking) return
@@ -146,6 +157,13 @@ export function SessionView() {
               </button>
             )}
             <button
+              onClick={() => setPreviewOpen((v) => !v)}
+              className={previewOpen ? 'btn-secondary text-xs' : 'btn-ghost text-xs'}
+              title="Toggle the live product preview"
+            >
+              ▶ {previewOpen ? 'Hide preview' : 'Preview'}
+            </button>
+            <button
               onClick={() => setSidebarOpen((v) => !v)}
               className="btn-ghost text-xs"
               title="Toggle the spectate sidebar"
@@ -200,6 +218,17 @@ export function SessionView() {
           </div>
         )}
       </div>
+
+      {previewOpen && sessionId && (
+        <div className="hidden min-w-0 flex-1 lg:flex">
+          <PreviewPane
+            src={`/preview/session/${sessionId}/`}
+            reloadKey={previewReloadKey}
+            onClose={() => setPreviewOpen(false)}
+            label={hasBuiltAnything ? session.branchName : 'nothing built yet — send a message'}
+          />
+        </div>
+      )}
 
       {sidebarOpen && sessionId && (
         <div className="hidden md:flex">

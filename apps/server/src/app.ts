@@ -6,6 +6,7 @@ import type { WebSocketServer } from 'ws'
 import { attachWebSocket } from './realtime/ws'
 import { authRoutes } from './routes/auth'
 import { devRoutes } from './routes/dev'
+import { previewRoutes } from './routes/preview'
 import { projectRoutes } from './routes/projects'
 import { sessionRoutes } from './routes/sessions'
 import { settingsRoutes } from './routes/settings'
@@ -26,6 +27,7 @@ export async function buildApp(services: Services): Promise<FastifyInstance> {
   await projectRoutes(app, services)
   await sessionRoutes(app, services)
   await settingsRoutes(app, services)
+  await previewRoutes(app, services)
   if (config.isDev) {
     await devRoutes(app, services)
   }
