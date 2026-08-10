@@ -2,6 +2,7 @@ import { createContext, useContext } from 'react'
 import { Outlet, useParams } from 'react-router-dom'
 import { useQuery, type UseQueryResult } from '@tanstack/react-query'
 import type { ProjectDetail } from '@loom/shared'
+import { ReconnectBanner } from '../components/ReconnectBanner'
 import { TopBar } from '../components/TopBar'
 import { Button, Spinner } from '../components/primitives'
 import { api } from '../lib/api'
@@ -38,6 +39,7 @@ export function ProjectShell() {
     <ProjectContext.Provider value={{ projectId, detailQuery, feed }}>
       <div className="flex h-full flex-col">
         <TopBar projectId={projectId} projectName={detailQuery.data?.name ?? '…'} presence={feed.presence} />
+        <ReconnectBanner />
         <div className="flex min-h-0 min-w-0 flex-1 flex-col">
           {detailQuery.isLoading ? (
             <div className="flex flex-1 items-center justify-center">

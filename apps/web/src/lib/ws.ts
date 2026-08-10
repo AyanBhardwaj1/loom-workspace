@@ -2,6 +2,8 @@ import { parseServerMessage, type ClientMessage, type ServerMessage } from '@loo
 
 type MessageListener = (msg: ServerMessage) => void
 type OpenListener = () => void
+export type ConnectionStatus = 'open' | 'reconnecting'
+type StatusListener = (status: ConnectionStatus) => void
 
 /**
  * Thin WebSocket client: one connection for the whole app, auto-reconnect
@@ -12,6 +14,8 @@ class WSClient {
   private ws: WebSocket | null = null
   private listeners = new Set<MessageListener>()
   private openListeners = new Set<OpenListener>()
+  private statusListeners = new Set<StatusListener>()
+  private status: ConnectionStatus = 'reconnecting'
   private sessionSubs = new Map<string, number>() // refcounts
   private projectSubs = new Map<string, number>()
   private reconnectDelay = 800
@@ -28,6 +32,7 @@ class WSClient {
 
     ws.onopen = () => {
       this.reconnectDelay = 800
+      this.setStatus('open')
       // restore server-side subscriptions lost with the old socket
       for (const sessionId of this.sessionSubs.keys()) this.raw({ t: 'sub', sessionId })
       for (const projectId of this.projectSubs.keys()) this.raw({ t: 'sub_project', projectId })
@@ -42,6 +47,7 @@ class WSClient {
     ws.onclose = () => {
       this.ws = null
       if (this.closedByUser) return
+      this.setStatus('reconnecting')
       this.reconnectTimer = setTimeout(() => this.connect(), this.reconnectDelay)
       this.reconnectDelay = Math.min(this.reconnectDelay * 1.6, 8000)
     }
@@ -70,6 +76,22 @@ class WSClient {
   onOpen(listener: OpenListener): () => void {
     this.openListeners.add(listener)
     return () => this.openListeners.delete(listener)
+  }
+
+  private setStatus(status: ConnectionStatus): void {
+    if (status === this.status) return
+    this.status = status
+    for (const l of [...this.statusListeners]) l(status)
+  }
+
+  /** Connection status for the reconnect banner (fires on change; call getStatus for current). */
+  onStatus(listener: StatusListener): () => void {
+    this.statusListeners.add(listener)
+    return () => this.statusListeners.delete(listener)
+  }
+
+  getStatus(): ConnectionStatus {
+    return this.status
   }
 
   private raw(msg: ClientMessage): void {
