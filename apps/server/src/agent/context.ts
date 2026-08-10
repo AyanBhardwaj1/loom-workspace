@@ -6,7 +6,19 @@ import { BRAND, type SessionEvent, type TranscriptEntry } from '@loom/shared'
  * "just works": the copied log reconstructs the same context.
  */
 export function buildTranscript(events: SessionEvent[]): TranscriptEntry[] {
-  const entries: TranscriptEntry[] = []
+  return foldTranscript([], events)
+}
+
+export const TRANSCRIPT_KEEP = 60
+
+/**
+ * C3 — incremental fold: append the tail's entries to a previous snapshot and
+ * trim to the last TRANSCRIPT_KEEP. Trimming keeps suffixes, so
+ * fold(fold(∅, A), B) === fold(∅, A ++ B) — the snapshot-integrity property
+ * the orchestrator's per-session cache (and its test) rely on.
+ */
+export function foldTranscript(prev: TranscriptEntry[], events: SessionEvent[]): TranscriptEntry[] {
+  const entries: TranscriptEntry[] = [...prev]
   for (const e of events) {
     switch (e.type) {
       case 'user_message':
@@ -32,7 +44,7 @@ export function buildTranscript(events: SessionEvent[]): TranscriptEntry[] {
     }
   }
   // keep the tail — old context matters less than recent work
-  return entries.slice(-60)
+  return entries.slice(-TRANSCRIPT_KEEP)
 }
 
 export function countAssistantTurns(events: SessionEvent[]): number {

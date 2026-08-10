@@ -48,7 +48,10 @@ class WSClient {
       this.ws = null
       if (this.closedByUser) return
       this.setStatus('reconnecting')
-      this.reconnectTimer = setTimeout(() => this.connect(), this.reconnectDelay)
+      // C4: exponential backoff with jitter — reconnect stampedes thunder
+      // less when a server restart drops every client at once
+      const jitter = 0.75 + Math.random() * 0.5
+      this.reconnectTimer = setTimeout(() => this.connect(), Math.round(this.reconnectDelay * jitter))
       this.reconnectDelay = Math.min(this.reconnectDelay * 1.6, 8000)
     }
     ws.onerror = () => {
@@ -176,6 +179,28 @@ class WSClient {
   catchup(sessionId: string, afterSeq: number): void {
     this.raw({ t: 'catchup', sessionId, afterSeq })
   }
+
+  /** C4: called on visibilitychange→visible — reconnect now or re-catchup. */
+  resyncAfterWake(): void {
+    if (this.closedByUser) return
+    if (this.isOpen()) {
+      // socket survived; consumers re-fetch anything they missed
+      for (const l of [...this.openListeners]) l()
+    } else {
+      if (this.reconnectTimer) clearTimeout(this.reconnectTimer)
+      this.reconnectDelay = 800
+      this.connect()
+    }
+  }
 }
 
 export const wsClient = new WSClient()
+
+// C4 — fast resync on tab return: consumers re-catchup from their lastSeq
+// (the same path as a reconnect), and a socket that died while hidden
+// reconnects immediately instead of waiting out its backoff.
+if (typeof document !== 'undefined') {
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'visible') wsClient.resyncAfterWake()
+  })
+}

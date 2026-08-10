@@ -22,7 +22,6 @@ import type { PresenceUser, SessionEventOf } from '@loom/shared'
 import { flipContainer, momentCommitSettle } from '../lib/choreography'
 import { groupForDisplay, parseUnifiedDiff, type DiffGroup } from '../lib/diff'
 import { TokenLine, useHighlightedLines } from './code'
-import { EvolutionPlayer } from './EvolutionPlayer'
 import { Popover, PopoverContent, PopoverTrigger } from './overlay'
 import { Avatar, Button, Pill, Spinner, cn } from './primitives'
 import type { DisplayItem, RowActions } from './eventStream'
@@ -187,7 +186,14 @@ function RowBody({
     case 'tool':
       return <ToolChip item={item} compact={compact} />
     case 'file':
-      return <DiffCard event={item.event} compact={compact} evolutionSteps={evolutions?.get(item.event.payload.path)} />
+      return (
+        <DiffCard
+          event={item.event}
+          compact={compact}
+          evolutionSteps={evolutions?.get(item.event.payload.path)}
+          onPlayEvolution={actions?.onPlayEvolution}
+        />
+      )
     case 'commit':
       return <CommitRow event={item.event} compact={compact} animate={animate} />
     case 'note': {
@@ -404,25 +410,20 @@ export function DiffCard({
   compact,
   defaultOpen,
   evolutionSteps,
+  onPlayEvolution,
 }: {
   event: SessionEventOf<'file_change'>
   compact: boolean
   defaultOpen?: boolean
   /** F4: the file's successive contents; ≥2 states unlocks "Play evolution" */
   evolutionSteps?: string[]
+  /** F4: lifted to the log root — virtualized rows unmount, the player must not */
+  onPlayEvolution?: (path: string, steps: string[]) => void
 }) {
-  const [evoOpen, setEvoOpen] = useState(false)
   const p = event.payload
   if (compact) {
     // spectate density: header-only, click expands in place
     return <CompactDiff event={event} />
-  }
-  if (evoOpen && evolutionSteps) {
-    return (
-      <div className="max-w-[70ch] overflow-hidden rounded-lg border border-hairline bg-surface">
-        <EvolutionPlayer path={p.path} contents={evolutionSteps} onClose={() => setEvoOpen(false)} />
-      </div>
-    )
   }
   return (
     <UnifiedDiffView
@@ -431,7 +432,11 @@ export function DiffCard({
       deletions={p.deletions}
       diff={p.unifiedDiff}
       defaultOpen={defaultOpen ?? true}
-      onPlayEvolution={evolutionSteps && evolutionSteps.length >= 2 ? () => setEvoOpen(true) : undefined}
+      onPlayEvolution={
+        onPlayEvolution && evolutionSteps && evolutionSteps.length >= 2
+          ? () => onPlayEvolution(p.path, evolutionSteps)
+          : undefined
+      }
     />
   )
 }

@@ -3,7 +3,7 @@ import type { DbHandle } from '../db/client'
 import type { ServerConfig } from '../env'
 import type { ProjectService } from '../projects/service'
 import type { SessionService } from '../sessions/service'
-import { agentSystemPrompt, buildTranscript, countAssistantTurns } from './context'
+import { agentSystemPrompt, countAssistantTurns, foldTranscript } from './context'
 import { estimateCostUsd } from './pricing'
 import type { AgentRuntime } from './runtime'
 import { ToolExecutor } from './tools'
@@ -31,6 +31,19 @@ export class AgentOrchestrator {
   private runningTurns = new Set<string>()
   /** sessionId → controller for the in-flight turn (present only while running). */
   private aborters = new Map<string, AbortController>()
+  /**
+   * C3 — per-session transcript snapshots so each turn folds only the tail.
+   * In-memory (single instance); a cold start simply refolds from zero.
+   */
+  private transcriptSnapshots = new Map<
+    string,
+    { upToSeq: number; entries: import('@loom/shared').TranscriptEntry[]; assistantTurns: number }
+  >()
+
+  /** Drop a session's snapshot (fork/end keep memory bounded). */
+  dropSnapshot(sessionId: string): void {
+    this.transcriptSnapshots.delete(sessionId)
+  }
 
   constructor(
     private deps: {
@@ -152,7 +165,22 @@ export class AgentOrchestrator {
     })
     await sessions.appendEvent(session.id, 'status', { status: 'thinking' })
 
-    const priorEvents = await sessions.getEvents(session.id, 0)
+    // C3 — transcript snapshot: fold only the events since the last snapshot
+    // instead of replaying the whole log every turn. O(snapshot + tail);
+    // integrity (fold(snap, tail) === fold(∅, all)) is covered by tests.
+    const snap = this.transcriptSnapshots.get(session.id)
+    const afterSeq = snap?.upToSeq ?? 0
+    const tailEvents = await sessions.getEvents(session.id, afterSeq)
+    const transcript = foldTranscript(snap?.entries ?? [], tailEvents)
+    const lastSeq = tailEvents.length > 0 ? (tailEvents[tailEvents.length - 1]!.seq ?? afterSeq) : afterSeq
+    const assistantTurns = (snap?.assistantTurns ?? 0) + countAssistantTurns(tailEvents)
+    // bound the cache: evict the oldest-inserted snapshot past 200 sessions
+    if (!snap && this.transcriptSnapshots.size >= 200) {
+      const oldest = this.transcriptSnapshots.keys().next().value
+      if (oldest) this.transcriptSnapshots.delete(oldest)
+    }
+    this.transcriptSnapshots.set(session.id, { upToSeq: lastSeq, entries: transcript, assistantTurns })
+
     const tools = new ToolExecutor(session.worktreePath)
     let announcedTools = false
 
@@ -163,9 +191,9 @@ export class AgentOrchestrator {
       moduleDescription: module.description,
       driverName: user.name,
       userMessage: text,
-      transcript: buildTranscript(priorEvents),
+      transcript,
       fileTree: tools.listTree(),
-      turnIndex: countAssistantTurns(priorEvents),
+      turnIndex: assistantTurns,
       signal,
       executeTool: async (name, input) => {
         const execution = await tools.execute(name, input)

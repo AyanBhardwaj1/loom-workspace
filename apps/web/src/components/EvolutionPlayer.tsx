@@ -1,7 +1,7 @@
 import { ShikiMagicMovePrecompiled } from '@shikijs/magic-move/react'
 import { codeToKeyedTokens, syncTokenKeys, type KeyedTokensInfo } from '@shikijs/magic-move/core'
 import '@shikijs/magic-move/style.css'
-import { ChevronLeft, ChevronRight, X } from 'lucide-react'
+import { ChevronLeft, ChevronRight } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { getHighlighter, langForPath } from '../lib/highlighter'
 import { IconButton, Spinner } from './primitives'
@@ -59,8 +59,7 @@ export function EvolutionPlayer({ path, contents, onClose }: { path: string; con
   return (
     <div className="border-t border-hairline bg-inset">
       <div className="flex h-9 items-center gap-1.5 border-b border-hairline px-2">
-        <span className="text-micro uppercase tracking-[0.08em] text-tertiary">Evolution</span>
-        <span className="min-w-0 truncate font-mono text-code-sm text-tertiary">{path}</span>
+        <span className="text-small text-tertiary">Step through every saved state of this file</span>
         <div className="ml-auto flex items-center gap-1">
           <IconButton label="Previous state (←)" onClick={() => setStep((s) => Math.max(0, s - 1))} disabled={step === 0}>
             <ChevronLeft size={15} strokeWidth={1.5} />
@@ -74,9 +73,6 @@ export function EvolutionPlayer({ path, contents, onClose }: { path: string; con
             disabled={!steps || step >= steps.length - 1}
           >
             <ChevronRight size={15} strokeWidth={1.5} />
-          </IconButton>
-          <IconButton label="Close (esc)" onClick={onClose}>
-            <X size={15} strokeWidth={1.5} />
           </IconButton>
         </div>
       </div>

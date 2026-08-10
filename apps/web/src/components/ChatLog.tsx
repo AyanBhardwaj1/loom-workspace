@@ -1,3 +1,4 @@
+import { useVirtualizer } from '@tanstack/react-virtual'
 import { clsx } from 'clsx'
 import { ArrowDown } from 'lucide-react'
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
@@ -5,7 +6,10 @@ import type { AgentActivityStatus, PresenceUser, SessionEvent } from '@loom/shar
 import { momentAgentAwakens, momentSessionStart } from '../lib/choreography'
 import { buildEvolutions } from '../lib/diff'
 import { wsClient } from '../lib/ws'
+import type { PendingMessage } from '../state/useSessionStream'
 import { EventRow } from './EventRow'
+import { EvolutionPlayer } from './EvolutionPlayer'
+import { Modal } from './overlay'
 import { toDisplayItems, type RowActions } from './eventStream'
 
 /**
@@ -28,6 +32,9 @@ export function ChatLog({
   emptyHint,
   reportReadingFor = null,
   readers,
+  pending,
+  onRetryPending,
+  onDiscardPending,
 }: {
   events: SessionEvent[]
   streamingText: string
@@ -46,6 +53,10 @@ export function ChatLog({
   reportReadingFor?: string | null
   /** F5: other viewers' read positions, docked to the thread */
   readers?: PresenceUser[]
+  /** C5: optimistic user messages (pending spinner / failed retry) */
+  pending?: PendingMessage[]
+  onRetryPending?: (localId: string) => void
+  onDiscardPending?: (localId: string) => void
 }) {
   const containerRef = useRef<HTMLDivElement>(null)
   const contentRef = useRef<HTMLDivElement>(null)
@@ -56,6 +67,12 @@ export function ChatLog({
   const items = useMemo(() => toDisplayItems(events), [events])
   // F4: per-path successive contents (only paths touched more than once)
   const evolutions = useMemo(() => (compact ? null : buildEvolutions(events)), [events, compact])
+  // F4: the player lives at the log root — virtualized rows recycle away
+  const [evo, setEvo] = useState<{ path: string; steps: string[] } | null>(null)
+  const rowActions = useMemo<RowActions | undefined>(
+    () => ({ ...(actions ?? {}), onPlayEvolution: (path: string, steps: string[]) => setEvo({ path, steps }) }),
+    [actions],
+  )
 
   // only animate rows that arrive AFTER the initial load
   const baselineRef = useRef<number | null>(null)
@@ -157,6 +174,22 @@ export function ChatLog({
 
   const showThinking = busy && !streaming
 
+  /**
+   * C1 — virtualization: only visible rows render; dynamic measurement keeps
+   * variable-height rows honest; generous overscan so the thread and its
+   * nodes never visibly gap while scrolling. Bottom anchoring is preserved:
+   * the atBottom effect scrolls the raw container, which the virtualizer
+   * observes. A 10k-event log renders ~30 rows.
+   */
+  const virtualizer = useVirtualizer({
+    count: items.length,
+    getScrollElement: () => containerRef.current,
+    estimateSize: () => 72,
+    overscan: 14,
+    getItemKey: (i) => itemKey(items[i]!, i),
+  })
+  const virtualItems = virtualizer.getVirtualItems()
+
   return (
     <div className="relative flex min-h-0 flex-1 flex-col">
       <div ref={containerRef} onScroll={onScroll} className={clsx('min-h-0 flex-1 overflow-y-auto', compact ? 'px-3 py-2' : 'px-6 py-4')}>
@@ -192,23 +225,73 @@ export function ChatLog({
             </div>
           )}
 
-          {items.map((item, i) => {
-            const eventId = itemKey(item, i)
-            return (
-              <EventRow
-                key={eventId}
-                item={item}
-                compact={compact}
-                driverName={driverName}
-                driverColor={driverColor}
-                animate={i >= baseline}
-                onFork={onFork}
-                actions={actions}
-                evolutions={evolutions}
-                readers={readersByEvent?.get(eventId)}
-              />
-            )
-          })}
+          <div className="relative w-full" style={{ height: virtualizer.getTotalSize() }}>
+            {virtualItems.map((vi) => {
+              const item = items[vi.index]!
+              const eventId = itemKey(item, vi.index)
+              return (
+                <div
+                  key={vi.key}
+                  ref={virtualizer.measureElement}
+                  data-index={vi.index}
+                  className="absolute left-0 top-0 w-full"
+                  style={{ transform: `translateY(${vi.start}px)` }}
+                >
+                  <EventRow
+                    item={item}
+                    compact={compact}
+                    driverName={driverName}
+                    driverColor={driverColor}
+                    animate={vi.index >= baseline}
+                    onFork={onFork}
+                    actions={rowActions}
+                    evolutions={evolutions}
+                    readers={readersByEvent?.get(eventId)}
+                  />
+                </div>
+              )
+            })}
+          </div>
+
+          {/* C5 — optimistic echoes: pending spinner, failed → retry/discard */}
+          {pending?.map((p) => (
+            <div key={p.localId} className={clsx('animate-rise', compact ? 'py-1' : 'py-2 pl-6 pr-8')}>
+              <div
+                className={clsx(
+                  'max-w-[85%] rounded-lg border px-3.5 py-2.5',
+                  p.failed ? 'border-danger-border bg-raised' : 'border-hairline bg-raised',
+                )}
+              >
+                <div className="mb-1 flex items-center gap-2">
+                  <span className="text-small font-medium text-secondary">{driverName}</span>
+                  <span className="ml-auto inline-flex items-center">
+                    {p.failed ? (
+                      <span className="text-small text-danger">not sent</span>
+                    ) : (
+                      <span className="inline-block h-3 w-3 animate-spin rounded-full border border-hairline-strong border-t-lav-500" style={{ animationDuration: '0.8s' }} />
+                    )}
+                  </span>
+                </div>
+                <div className={clsx('whitespace-pre-wrap text-primary', compact ? 'text-small' : 'text-body')}>{p.text}</div>
+                {p.failed && (
+                  <div className="mt-2 flex gap-2">
+                    <button
+                      onClick={() => onRetryPending?.(p.localId)}
+                      className="rounded border border-hairline px-2 py-0.5 text-small text-secondary transition-colors duration-micro hover:border-hairline-hover hover:text-primary"
+                    >
+                      Retry
+                    </button>
+                    <button
+                      onClick={() => onDiscardPending?.(p.localId)}
+                      className="rounded px-2 py-0.5 text-small text-tertiary transition-colors duration-micro hover:text-secondary"
+                    >
+                      Discard
+                    </button>
+                  </div>
+                )}
+              </div>
+            </div>
+          ))}
 
           {/* streaming: min-heights reserved before content lands — zero CLS */}
           {(streaming || showThinking) && (
@@ -227,6 +310,14 @@ export function ChatLog({
           )}
         </div>
       </div>
+
+      {evo && (
+        <Modal open onClose={() => setEvo(null)} title={`Evolution — ${evo.path}`} width={780}>
+          <div className="-m-1 overflow-hidden rounded-lg border border-hairline">
+            <EvolutionPlayer path={evo.path} contents={evo.steps} onClose={() => setEvo(null)} />
+          </div>
+        </Modal>
+      )}
 
       {!atBottom && (
         <button

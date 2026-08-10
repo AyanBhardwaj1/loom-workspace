@@ -10,11 +10,14 @@ export function Composer({
   sessionId,
   agentStatus,
   fresh = false,
+  onSend,
 }: {
   sessionId: string
   agentStatus: AgentActivityStatus
   /** fresh session — the focus ring breathes once after the thread draws (M1) */
   fresh?: boolean
+  /** C5: optimistic send (falls back to the raw socket when absent) */
+  onSend?: (text: string) => boolean
 }) {
   const [text, setText] = useState('')
   const [queue, setQueue] = useState<string[]>([])
@@ -40,13 +43,16 @@ export function Composer({
     }
   }, [fresh])
 
+  const send = (t: string): boolean => (onSend ? onSend(t) : wsClient.sendUserMessage(sessionId, t))
+
   // dispatch exactly one queued message on each busy → idle transition
   useEffect(() => {
     if (prevBusy.current && !busy && queue.length > 0) {
       const [next, ...rest] = queue
-      if (wsClient.sendUserMessage(sessionId, next!)) setQueue(rest)
+      if (send(next!)) setQueue(rest)
     }
     prevBusy.current = busy
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [busy, queue, sessionId])
 
   const submit = () => {
@@ -58,8 +64,9 @@ export function Composer({
       textareaRef.current?.focus()
       return
     }
-    const sent = wsClient.sendUserMessage(sessionId, trimmed)
-    if (!sent) {
+    const sent = send(trimmed)
+    if (!sent && !onSend) {
+      // raw-socket path: keep the text so nothing is lost
       setNotice('Connection lost — reconnecting. Your message is kept; try again in a second.')
       return
     }

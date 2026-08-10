@@ -30,6 +30,8 @@ export interface RowActions {
   onResolveSuggestion?: (suggestionId: string, decision: 'accepted' | 'dismissed') => void
   /** lets rows link into the project (fork markers → the forked session) */
   projectId?: string
+  /** F4: open the evolution player at the log root (survives row recycling) */
+  onPlayEvolution?: (path: string, steps: string[]) => void
 }
 
 export function toDisplayItems(events: SessionEvent[]): DisplayItem[] {

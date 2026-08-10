@@ -285,6 +285,9 @@ export function SessionView() {
             onFork={(eventId, anchorEl) => void fork(eventId, anchorEl)}
             reportReadingFor={!isDriver && !isEnded ? session.id : null}
             readers={readers}
+            pending={isDriver ? stream.pending : undefined}
+            onRetryPending={stream.retryPending}
+            onDiscardPending={stream.discardPending}
             actions={{
               isDriver,
               projectId,
@@ -342,7 +345,7 @@ export function SessionView() {
               </div>
             </div>
           ) : isDriver && !isEnded ? (
-            <Composer sessionId={session.id} agentStatus={stream.agentStatus} fresh={freshSession} />
+            <Composer sessionId={session.id} agentStatus={stream.agentStatus} fresh={freshSession} onSend={stream.sendMessage} />
           ) : (
             <div className="border-t border-hairline px-6 py-3.5">
               <div className="mx-auto max-w-[760px]">

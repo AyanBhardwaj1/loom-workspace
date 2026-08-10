@@ -1,7 +1,15 @@
-import { useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import type { AgentActivityStatus, SessionDetail, SessionEvent } from '@loom/shared'
 import { api } from '../lib/api'
 import { wsClient } from '../lib/ws'
+
+/** C5 — a locally-echoed user message awaiting its server-persisted twin. */
+export interface PendingMessage {
+  localId: string
+  text: string
+  at: string
+  failed: boolean
+}
 
 export interface SessionStream {
   detail: SessionDetail | null
@@ -11,6 +19,12 @@ export interface SessionStream {
   agentStatus: AgentActivityStatus
   loading: boolean
   error: string | null
+  /** C5: optimistic user messages not yet confirmed by seq */
+  pending: PendingMessage[]
+  /** C5: send with local echo; false = socket down AND echo marked failed */
+  sendMessage: (text: string) => boolean
+  retryPending: (localId: string) => void
+  discardPending: (localId: string) => void
 }
 
 /**
@@ -25,6 +39,7 @@ export function useSessionStream(sessionId: string | null): SessionStream {
   const [agentStatus, setAgentStatus] = useState<AgentActivityStatus>('idle')
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  const [pending, setPending] = useState<PendingMessage[]>([])
   const lastSeqRef = useRef(0)
 
   useEffect(() => {
@@ -71,16 +86,62 @@ export function useSessionStream(sessionId: string | null): SessionStream {
             )
           }
         }
-        if (e.type === 'user_message') setAgentStatus('thinking')
+        if (e.type === 'user_message') {
+          setAgentStatus('thinking')
+          // C5 — reconcile: the persisted twin replaces the local echo
+          const text = e.payload.text
+          setPending((prev) => {
+            const idx = prev.findIndex((p) => p.text === text)
+            return idx >= 0 ? prev.filter((_, i) => i !== idx) : prev
+          })
+        }
       }
     }
 
+    // C2 — delta coalescing: token storms flush once per animation frame
+    // (one re-render per frame, not per token). rAF is throttled in hidden
+    // tabs, so a 50ms timer backstop keeps state advancing there too.
+    let deltaBuffer = ''
+    let flushScheduled = false
+    const flushDeltas = () => {
+      flushScheduled = false
+      if (!alive || deltaBuffer.length === 0) return
+      const chunk = deltaBuffer
+      deltaBuffer = ''
+      setStreamingText((prev) => prev + chunk)
+    }
+    const scheduleFlush = () => {
+      if (flushScheduled) return
+      flushScheduled = true
+      if (document.visibilityState === 'hidden') setTimeout(flushDeltas, 50)
+      else requestAnimationFrame(flushDeltas)
+    }
+
     const offMessage = wsClient.onMessage((msg) => {
+      if (msg.t === 'error') {
+        // C5 — a rejected send strands its echo; surface it as retryable
+        setPending((prev) => {
+          if (prev.length === 0) return prev
+          const next = [...prev]
+          for (let i = next.length - 1; i >= 0; i--) {
+            if (!next[i]!.failed) {
+              next[i] = { ...next[i]!, failed: true }
+              break
+            }
+          }
+          return next
+        })
+        return
+      }
       if (msg.t === 'event' && msg.sessionId === sessionId) {
         if (msg.event.type === 'assistant_delta') {
-          const chunk = msg.event.payload.text
-          setStreamingText((prev) => prev + chunk)
+          deltaBuffer += msg.event.payload.text
+          scheduleFlush()
         } else {
+          if (msg.event.type === 'assistant_message' && deltaBuffer) {
+            // the finalized message supersedes any unflushed tail
+            deltaBuffer = ''
+          }
           ingest([msg.event])
         }
       } else if (msg.t === 'catchup_batch' && msg.sessionId === sessionId) {
@@ -118,5 +179,36 @@ export function useSessionStream(sessionId: string | null): SessionStream {
     }
   }, [sessionId])
 
-  return { detail, events, streamingText, agentStatus, loading, error }
+  // C5 — send with local echo; the pending row reconciles away by seq
+  const sendMessage = useCallback(
+    (text: string): boolean => {
+      if (!sessionId) return false
+      const localId = `local-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
+      const sent = wsClient.sendUserMessage(sessionId, text)
+      setPending((prev) => [...prev, { localId, text, at: new Date().toISOString(), failed: !sent }])
+      return sent
+    },
+    [sessionId],
+  )
+
+  const retryPending = useCallback(
+    (localId: string) => {
+      if (!sessionId) return
+      setPending((prev) => {
+        const item = prev.find((p) => p.localId === localId)
+        if (!item) return prev
+        const sent = wsClient.sendUserMessage(sessionId, item.text)
+        return prev.map((p) => (p.localId === localId ? { ...p, failed: !sent, at: new Date().toISOString() } : p))
+      })
+    },
+    [sessionId],
+  )
+
+  const discardPending = useCallback((localId: string) => {
+    setPending((prev) => prev.filter((p) => p.localId !== localId))
+  }, [])
+
+  useEffect(() => setPending([]), [sessionId])
+
+  return { detail, events, streamingText, agentStatus, loading, error, pending, sendMessage, retryPending, discardPending }
 }
