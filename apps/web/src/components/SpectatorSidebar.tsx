@@ -115,24 +115,28 @@ export function SpectatorSidebar({
       ) : (
         <>
           <div className="shrink-0 border-b border-hairline px-3 py-2">
-            <select value={selectedId ?? ''} onChange={(e) => setSelectedId(e.target.value)} className="loom-input py-1.5 text-small">
-              {candidates.map((s) => (
-                <option key={s.id} value={s.id}>
-                  {s.driverName} — {s.title}
-                </option>
-              ))}
-            </select>
-            {selected && (
-              <div className="mt-2 flex items-center gap-2 text-small text-secondary">
-                <StatusDot tone={stream.agentStatus === 'thinking' || stream.agentStatus === 'running_tools' ? 'accent' : 'idle'} />
-                {stream.agentStatus === 'thinking' ? 'thinking' : stream.agentStatus === 'running_tools' ? 'working' : 'idle'}
-                {watcherCount > 0 && (
-                  <span className="tnum ml-auto inline-flex items-center gap-1 font-mono text-small text-tertiary">
-                    <NumberFlow value={watcherCount} transformTiming={NUMBER_TIMING} spinTiming={NUMBER_TIMING} /> watching
-                  </span>
-                )}
-              </div>
+            {candidates.length > 1 && (
+              <select
+                value={selectedId ?? ''}
+                onChange={(e) => setSelectedId(e.target.value)}
+                className="loom-input mb-2 py-1.5 text-small"
+              >
+                {candidates.map((s) => (
+                  <option key={s.id} value={s.id}>
+                    {s.driverName} — {s.title}
+                  </option>
+                ))}
+              </select>
             )}
+            <div className="flex items-center gap-2 text-small text-secondary">
+              <StatusDot tone={stream.agentStatus === 'thinking' || stream.agentStatus === 'running_tools' ? 'accent' : 'idle'} />
+              {stream.agentStatus === 'thinking' ? 'thinking' : stream.agentStatus === 'running_tools' ? 'working' : 'idle'}
+              {watcherCount > 0 && (
+                <span className="tnum ml-auto inline-flex items-center gap-1 font-mono text-small text-tertiary">
+                  <NumberFlow value={watcherCount} transformTiming={NUMBER_TIMING} spinTiming={NUMBER_TIMING} /> watching
+                </span>
+              )}
+            </div>
           </div>
 
           {stream.loading ? (

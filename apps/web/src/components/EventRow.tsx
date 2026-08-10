@@ -516,10 +516,10 @@ export function UnifiedDiffView({
                                 : undefined
                           }
                         >
-                          <td className="tnum w-[44px] select-none pr-2 text-right align-top text-code-sm" style={{ color: 'rgba(255,255,255,0.28)' }}>
+                          <td className="tnum w-[44px] select-none pr-2 text-right align-top text-code-sm" style={{ color: 'var(--text-linenumber)' }}>
                             {line.oldNo ?? ''}
                           </td>
-                          <td className="tnum w-[44px] select-none pr-2.5 text-right align-top text-code-sm" style={{ color: 'rgba(255,255,255,0.28)' }}>
+                          <td className="tnum w-[44px] select-none pr-2.5 text-right align-top text-code-sm" style={{ color: 'var(--text-linenumber)' }}>
                             {line.newNo ?? ''}
                           </td>
                           <td

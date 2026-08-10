@@ -79,12 +79,10 @@ export function ProjectDashboard() {
   return (
     <div className="flex min-h-0 flex-1">
       <div className="min-w-0 flex-1 overflow-y-auto px-8 py-7">
-        <header className="mb-6">
+        <header className="mb-5">
           <div className="flex flex-wrap items-center gap-3">
-            <div>
-              <h1 className="text-h2 text-primary">{detail.name}</h1>
-              <p className="mt-0.5 text-ui text-secondary">{detail.description}</p>
-            </div>
+            {/* the top bar already names the project — one quiet line is enough */}
+            <p className="text-ui text-secondary">{detail.description}</p>
             {devMode && (
               <button
                 onClick={() => void simulateTeammate()}

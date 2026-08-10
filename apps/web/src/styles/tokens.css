@@ -15,6 +15,8 @@
 
   /* ---- canvas & surfaces (flat solids over the shader canvas) ---- */
   --bg-canvas: #0b0b0e; /* CSS fallback + body bg behind the shader */
+  --bg-canvas-mid: #101014; /* fallback-gradient stops (the shader's CSS twin) */
+  --bg-canvas-high: #16161a;
   --bg-surface: #141417; /* cards, tiles, sidebar */
   --bg-raised: #1a1a1e; /* bubbles, composer, hover fills, toasts */
   --bg-overlay: #202024; /* modals, dropdowns, popovers, palette */
@@ -30,6 +32,7 @@
   --text-secondary: #a6a6af;
   --text-tertiary: rgba(255, 255, 255, 0.42);
   --text-disabled: rgba(255, 255, 255, 0.25);
+  --text-linenumber: rgba(255, 255, 255, 0.28); /* diff gutters */
   --text-on-accent: #131316;
   --text-on-identity: #0e0e10; /* avatar initials on founder colors */
 

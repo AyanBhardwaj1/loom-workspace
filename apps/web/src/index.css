@@ -19,7 +19,12 @@ body,
  */
 body {
   @apply bg-canvas font-sans text-body text-primary antialiased;
-  background-image: radial-gradient(ellipse 130% 90% at 50% -12%, #16161a 0%, #101014 46%, #0b0b0e 100%);
+  background-image: radial-gradient(
+    ellipse 130% 90% at 50% -12%,
+    var(--bg-canvas-high) 0%,
+    var(--bg-canvas-mid) 46%,
+    var(--bg-canvas) 100%
+  );
   background-attachment: fixed;
 }
 
