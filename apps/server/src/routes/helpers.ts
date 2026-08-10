@@ -14,15 +14,17 @@ declare module 'fastify' {
 
 const COOKIE_MAX_AGE_S = 30 * 24 * 60 * 60
 
-export function setSessionCookie(reply: FastifyReply, token: string, config: ServerConfig): void {
+export function setSessionCookie(reply: FastifyReply, token: string, config: ServerConfig, req?: FastifyRequest): void {
+  // Secure automatically when the request really arrived over TLS (fastify
+  // trustProxy honors X-Forwarded-Proto from Cloudflare Tunnel / nginx),
+  // or when forced via COOKIE_SECURE=1. Local http demos stay non-secure.
+  const overTls = req?.protocol === 'https'
   reply.setCookie(SESSION_COOKIE, signValue(token, config.cookieSecret), {
     httpOnly: true,
     sameSite: 'lax',
     path: '/',
     maxAge: COOKIE_MAX_AGE_S,
-    // left non-secure so the local two-browser demo works over http;
-    // set COOKIE_SECURE=1 behind TLS in production
-    secure: process.env.COOKIE_SECURE === '1',
+    secure: process.env.COOKIE_SECURE === '1' || overTls,
   })
 }
 

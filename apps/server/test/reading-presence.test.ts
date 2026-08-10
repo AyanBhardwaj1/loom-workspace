@@ -11,6 +11,32 @@ afterEach(async () => {
   await ctx.cleanup()
 })
 
+describe('1.2 — transient reaction protocol', () => {
+  it('parses react/reaction frames and rejects malformed ones', () => {
+    expect(parseClientMessage(JSON.stringify({ t: 'react', sessionId: 's1', emoji: '🔥', atSeq: 12 }))).toEqual({
+      t: 'react',
+      sessionId: 's1',
+      emoji: '🔥',
+      atSeq: 12,
+    })
+    expect(parseClientMessage(JSON.stringify({ t: 'react', sessionId: 's1', emoji: '🎉', atSeq: null }))).toEqual({
+      t: 'react',
+      sessionId: 's1',
+      emoji: '🎉',
+      atSeq: null,
+    })
+    // missing atSeq → rejected; emoji too long → rejected
+    expect(parseClientMessage(JSON.stringify({ t: 'react', sessionId: 's1', emoji: '🔥' }))).toBeNull()
+    expect(parseClientMessage(JSON.stringify({ t: 'react', sessionId: 's1', emoji: 'x'.repeat(20), atSeq: 1 }))).toBeNull()
+  })
+
+  it('reactions are never a persisted event type', async () => {
+    const { PERSISTED_EVENT_TYPES } = await import('@loom/shared')
+    expect(PERSISTED_EVENT_TYPES).not.toContain('reaction')
+    expect(PERSISTED_EVENT_TYPES).not.toContain('react')
+  })
+})
+
 describe('F5 — read-position presence protocol', () => {
   it('accepts the reading message and keeps it ephemeral (schema-level)', () => {
     const ok = parseClientMessage(JSON.stringify({ t: 'reading', sessionId: 's1', eventId: 'e9' }))

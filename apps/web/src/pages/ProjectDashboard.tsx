@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { FlaskConical, Plus } from 'lucide-react'
+import { Eye, FlaskConical, Plus } from 'lucide-react'
 import type { ChangeSummary, ModuleDto, SessionSummary } from '@loom/shared'
 import { Modal } from '../components/overlay'
 import { Avatar, Button, LivePill, Pill, cn } from '../components/primitives'
@@ -106,6 +106,8 @@ export function ProjectDashboard() {
               projectId={projectId}
               live={activeByModule.get(m.id) ?? null}
               gist={feed.activityByModule.get(m.id) ?? null}
+              ticker={activeByModule.get(m.id) ? (feed.tickerBySession.get(activeByModule.get(m.id)!.id) ?? null) : null}
+              watcherCount={activeByModule.get(m.id) ? feed.presence.filter((p) => p.viewing === activeByModule.get(m.id)!.id).length : 0}
               now={now}
             />
           ))}
@@ -209,12 +211,17 @@ function ModuleCard({
   projectId,
   live,
   gist,
+  ticker,
+  watcherCount,
   now,
 }: {
   module: ModuleDto
   projectId: string
   live: SessionSummary | null
   gist: { driverName: string; gist: string; at: string } | null
+  /** 1.3 — last 3 gists: a window into the session */
+  ticker: Array<{ gist: string; at: string }> | null
+  watcherCount: number
   now: number
 }) {
   const navigate = useNavigate()
@@ -247,11 +254,29 @@ function ModuleCard({
       </div>
       <div className="mt-auto pl-1 pt-4">
         {live ? (
-          <div className="flex items-center gap-2">
-            <Avatar name={live.driverName} color={live.driverAvatarColor} size="sm" />
-            <span className="min-w-0 flex-1 truncate font-mono text-small text-secondary">{lastLine}</span>
-            <span className="tnum shrink-0 font-mono text-small text-tertiary">{timeAgo(live.lastEventAt, now)}</span>
-          </div>
+          <>
+            {/* 1.3 — the ticker: newest at the bottom, older lines fade upward */}
+            {ticker && ticker.length > 1 && (
+              <div className="ticker-mask mb-1.5 space-y-0.5 overflow-hidden">
+                {ticker.slice(0, -1).map((t, i) => (
+                  <div key={`${t.at}-${i}`} className="animate-rise truncate font-mono text-small text-tertiary">
+                    {t.gist}
+                  </div>
+                ))}
+              </div>
+            )}
+            <div className="flex items-center gap-2">
+              <Avatar name={live.driverName} color={live.driverAvatarColor} size="sm" />
+              <span className="min-w-0 flex-1 truncate font-mono text-small text-secondary">{lastLine}</span>
+              {watcherCount > 0 && (
+                <span className="tnum inline-flex shrink-0 items-center gap-1 font-mono text-small text-tertiary" title="Watching now">
+                  <Eye size={11} strokeWidth={1.5} />
+                  {watcherCount}
+                </span>
+              )}
+              <span className="tnum shrink-0 font-mono text-small text-tertiary">{timeAgo(live.lastEventAt, now)}</span>
+            </div>
+          </>
         ) : (
           <div className="text-small text-tertiary">No live session — click to start one</div>
         )}

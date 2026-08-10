@@ -180,6 +180,11 @@ class WSClient {
     this.raw({ t: 'catchup', sessionId, afterSeq })
   }
 
+  /** 1.2: transient emoji reaction (atSeq anchors a row; null = live edge). */
+  react(sessionId: string, emoji: string, atSeq: number | null): void {
+    this.raw({ t: 'react', sessionId, emoji, atSeq })
+  }
+
   /** F8: pin a reaction or comment to an event. */
   annotate(sessionId: string, targetEventId: string, kind: 'reaction' | 'comment', body: string): boolean {
     if (!this.isOpen()) {

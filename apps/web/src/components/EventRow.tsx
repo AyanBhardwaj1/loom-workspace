@@ -13,6 +13,7 @@ import {
   GitFork,
   HelpCircle,
   Lightbulb,
+  Link2,
   Plus,
   Sparkles,
   Terminal,
@@ -28,6 +29,7 @@ import { flipContainer, momentCommitSettle } from '../lib/choreography'
 import { groupForDisplay, parseUnifiedDiff, type DiffGroup } from '../lib/diff'
 import { TokenLine, useHighlightedLines } from './code'
 import { Popover, PopoverContent, PopoverTrigger } from './overlay'
+import { ReactionCounts, ReactionStrip } from './Reactions'
 import { Avatar, Button, Pill, Spinner, cn } from './primitives'
 import type { DisplayItem, RowActions } from './eventStream'
 
@@ -61,6 +63,8 @@ export const EventRow = memo(function EventRow({
   evolutions,
   readers,
   annotations,
+  onReact,
+  reactionCounts,
 }: {
   item: DisplayItem
   compact?: boolean
@@ -76,6 +80,9 @@ export const EventRow = memo(function EventRow({
   readers?: PresenceUser[]
   /** F8: annotations pinned to this event */
   annotations?: Array<SessionEventOf<'annotation'>>
+  /** 1.2: transient reaction hover strip (spectators) + page-lifetime counts */
+  onReact?: (emoji: string, atSeq: number | null) => void
+  reactionCounts?: Map<string, number>
 }) {
   const forkId = item.kind === 'tool' ? item.call.id : item.event.id
   const isCommit = item.kind === 'commit'
@@ -89,6 +96,7 @@ export const EventRow = memo(function EventRow({
       className={clsx('group relative', compact ? 'py-1' : 'py-2', animate && !isCommit && 'animate-rise')}
       data-event-row
       data-event-id={forkId}
+      data-seq={item.kind === 'tool' ? (item.call.seq ?? '') : (item.event.seq ?? '')}
     >
       {/* F5 — spectators' read positions dock to the thread beside the event */}
       {!compact && readers && readers.length > 0 && (
@@ -159,6 +167,31 @@ export const EventRow = memo(function EventRow({
           </PopoverContent>
         </Popover>
       )}
+      {/* 1.2 — reaction strip + 8.2 copy-link, on hover at the row edge */}
+      {!compact && (onReact || actions?.projectId) && item.kind !== 'fork' && (
+        <span className="absolute right-14 top-1 z-0 hidden items-center gap-1 group-hover:flex">
+          {onReact && (
+            <ReactionStrip
+              onReact={(emoji) => onReact(emoji, item.kind === 'tool' ? (item.call.seq ?? null) : (item.event.seq ?? null))}
+            />
+          )}
+          {actions?.projectId && (
+            <button
+              title="Copy a link to this event"
+              onClick={() => {
+                const seq = item.kind === 'tool' ? item.call.seq : item.event.seq
+                const sessionId = item.kind === 'tool' ? item.call.sessionId : item.event.sessionId
+                void navigator.clipboard.writeText(
+                  `${location.origin}/p/${actions.projectId}/s/${sessionId}#seq-${seq ?? ''}`,
+                )
+              }}
+              className="flex h-6 w-6 items-center justify-center rounded text-tertiary transition-colors duration-micro hover:bg-raised hover:text-primary"
+            >
+              <Link2 size={13} strokeWidth={1.5} />
+            </button>
+          )}
+        </span>
+      )}
       {/* F8 — annotate affordance beside the fork icon */}
       {actions?.onAnnotate && item.kind !== 'fork' && item.kind !== 'suggestion' && !compact && (
         <Popover open={annotateOpen} onOpenChange={setAnnotateOpen}>
@@ -190,6 +223,7 @@ export const EventRow = memo(function EventRow({
       <div className={compact ? '' : 'pl-6 pr-8'}>
         <RowBody item={item} compact={compact} driverName={driverName} driverColor={driverColor} animate={animate} actions={actions} evolutions={evolutions} />
         {annotations && annotations.length > 0 && <AnnotationPills annotations={annotations} />}
+        <ReactionCounts counts={reactionCounts} />
       </div>
     </div>
   )

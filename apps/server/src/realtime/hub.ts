@@ -26,6 +26,8 @@ interface ConnState {
   readingEventId: string | null
   /** F9/F13: unsubscribe from this user's targeted-message topic */
   userUnsub: (() => void) | null
+  /** 1.2: reaction rate limit — timestamps of this conn's recent reactions */
+  reactionTimes: number[]
   /** serializes message handling — a quick sub/unsub must not race itself */
   chain: Promise<void>
 }
@@ -69,6 +71,7 @@ export class Hub {
       viewingProject: null,
       readingEventId: null,
       userUnsub: null,
+      reactionTimes: [],
       chain: Promise.resolve(),
     }
     this.conns.add(conn)
@@ -183,6 +186,28 @@ export class Hub {
         if (conn.readingEventId === msg.eventId) return
         conn.readingEventId = msg.eventId
         if (conn.viewingProject) this.broadcastPresence(conn.viewingProject)
+        return
+      }
+      case 'react': {
+        // 1.2 — transient reactions: member-gated, allowlisted emoji,
+        // 5/sec per connection, broadcast-only (never persisted)
+        const ALLOWED = new Set(['🎉', '❤️', '🔥', '😂', '👀'])
+        if (!ALLOWED.has(msg.emoji)) return
+        const now = Date.now()
+        conn.reactionTimes = conn.reactionTimes.filter((t) => now - t < 1000)
+        if (conn.reactionTimes.length >= 5) return
+        conn.reactionTimes.push(now)
+        const session = await sessions.getSession(msg.sessionId)
+        if (!session) return
+        if (!(await projects.isMember(session.projectId, conn.user.id))) return
+        this.deps.bus.publish(sessionTopic(msg.sessionId), {
+          t: 'reaction',
+          sessionId: msg.sessionId,
+          emoji: msg.emoji,
+          atSeq: msg.atSeq,
+          byName: conn.user.name,
+          byColor: conn.user.avatarColor,
+        } satisfies ServerMessage)
         return
       }
       case 'annotate': {

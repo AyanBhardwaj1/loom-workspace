@@ -15,6 +15,8 @@ export interface ProjectFeed {
   presence: PresenceUser[]
   /** latest live gist per module (dashboard liveness) */
   activityByModule: Map<string, ModuleActivity>
+  /** 1.3 — rolling last-3 gists per session (mission-control tickers) */
+  tickerBySession: Map<string, ModuleActivity[]>
   /** changes that arrived live during this page's lifetime, newest first */
   liveChanges: ChangeSummary[]
   /** ids of changes that just arrived (for the highlight animation) */
@@ -30,6 +32,7 @@ export function useProjectFeed(projectId: string | null): ProjectFeed {
   const queryClient = useQueryClient()
   const [presence, setPresence] = useState<PresenceUser[]>([])
   const [activityByModule, setActivityByModule] = useState<Map<string, ModuleActivity>>(new Map())
+  const [tickerBySession, setTickerBySession] = useState<Map<string, ModuleActivity[]>>(new Map())
   const [liveChanges, setLiveChanges] = useState<ChangeSummary[]>([])
   const [freshChangeIds, setFreshChangeIds] = useState<Set<string>>(new Set())
   const [lastMerge, setLastMerge] = useState<ProjectFeed['lastMerge']>(null)
@@ -39,6 +42,7 @@ export function useProjectFeed(projectId: string | null): ProjectFeed {
     if (!projectId) return
     setPresence([])
     setActivityByModule(new Map())
+    setTickerBySession(new Map())
     setLiveChanges([])
     setFreshChangeIds(new Set())
 
@@ -53,19 +57,27 @@ export function useProjectFeed(projectId: string | null): ProjectFeed {
 
     const handleUpdate = (update: ProjectUpdate) => {
       switch (update.kind) {
-        case 'session_activity':
+        case 'session_activity': {
+          const activity: ModuleActivity = {
+            sessionId: update.sessionId,
+            driverUserId: update.driverUserId,
+            driverName: update.driverName,
+            gist: update.gist,
+            at: update.at,
+          }
           setActivityByModule((prev) => {
             const next = new Map(prev)
-            next.set(update.moduleId, {
-              sessionId: update.sessionId,
-              driverUserId: update.driverUserId,
-              driverName: update.driverName,
-              gist: update.gist,
-              at: update.at,
-            })
+            next.set(update.moduleId, activity)
+            return next
+          })
+          setTickerBySession((prev) => {
+            const next = new Map(prev)
+            const list = [...(next.get(update.sessionId) ?? []), activity].slice(-3)
+            next.set(update.sessionId, list)
             return next
           })
           break
+        }
         case 'change':
           setLiveChanges((prev) => [update.change, ...prev.filter((c) => c.id !== update.change.id)].slice(0, 30))
           setFreshChangeIds((prev) => new Set(prev).add(update.change.id))
@@ -116,5 +128,5 @@ export function useProjectFeed(projectId: string | null): ProjectFeed {
     }
   }, [projectId, queryClient])
 
-  return { presence, activityByModule, liveChanges, freshChangeIds, lastMerge }
+  return { presence, activityByModule, tickerBySession, liveChanges, freshChangeIds, lastMerge }
 }

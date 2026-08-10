@@ -22,6 +22,9 @@ export async function buildApp(services: Services): Promise<FastifyInstance> {
   const app = Fastify({
     logger: { level: config.isDev ? 'warn' : 'info' },
     bodyLimit: 1024 * 1024,
+    // deployment: honor X-Forwarded-* from a fronting proxy/tunnel
+    // (Cloudflare Tunnel, nginx, Caddy) so req.protocol reflects real TLS
+    trustProxy: true,
     genReqId: (req) => (req.headers['x-request-id'] as string | undefined) ?? `req_${Date.now().toString(36)}_${++reqCounter}`,
   })
 
@@ -45,14 +48,28 @@ export async function buildApp(services: Services): Promise<FastifyInstance> {
   })
 
   // C6 — CSRF belt-and-braces on top of SameSite=Lax + JSON-only parsing:
-  // when a browser sends an Origin on a mutating request, it must match Host.
+  // when a browser sends an Origin on a mutating request, it must match Host
+  // (or a PUBLIC_ORIGINS entry, for fronting setups that rewrite Host).
+  const extraOrigins = new Set(
+    (process.env.PUBLIC_ORIGINS ?? '')
+      .split(',')
+      .map((o) => o.trim())
+      .filter(Boolean)
+      .map((o) => {
+        try {
+          return new URL(o).host
+        } catch {
+          return o
+        }
+      }),
+  )
   app.addHook('onRequest', async (req, reply) => {
     if (req.method === 'GET' || req.method === 'HEAD' || req.method === 'OPTIONS') return
     const origin = req.headers.origin
     if (!origin) return // non-browser client (curl, tests)
     try {
       const originHost = new URL(origin).host
-      if (originHost !== req.headers.host) {
+      if (originHost !== req.headers.host && !extraOrigins.has(originHost)) {
         return reply.code(403).send({ error: 'Cross-origin request rejected' })
       }
     } catch {

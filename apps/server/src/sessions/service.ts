@@ -117,7 +117,16 @@ export class SessionService {
     }
   }
 
+  /** 1.3 — dashboard tickers: at most 1 gist/sec per session (commits always pass) */
+  private lastGistAt = new Map<string, number>()
+
   private async publishActivityGist(event: SessionEvent): Promise<void> {
+    if (event.type !== 'commit') {
+      const now = Date.now()
+      const last = this.lastGistAt.get(event.sessionId) ?? 0
+      if (now - last < 1000) return
+      this.lastGistAt.set(event.sessionId, now)
+    }
     const session = await this.getSession(event.sessionId)
     if (!session) return
     const driver = await this.getUser(session.driverUserId)

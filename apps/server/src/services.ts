@@ -42,7 +42,7 @@ export async function createServices(
   await runtime.loadPersisted()
   const orchestrator = new AgentOrchestrator({ dbh, config, sessions, projects, runtime })
   const merge = new MergeService({ dbh, projects, sessions, runtime })
-  const ghost = new GhostCollaborator({ dbh, projects, sessions, orchestrator })
+  const ghost = new GhostCollaborator({ dbh, projects, sessions, orchestrator, bus })
   const notifications = new NotificationService(dbh, bus)
   const hub = new Hub({ dbh, bus, sessions, projects, orchestrator, notifications })
 

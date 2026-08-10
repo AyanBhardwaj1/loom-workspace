@@ -51,6 +51,11 @@ export const clientMessageSchema = z.discriminatedUnion('t', [
     kind: z.enum(['reaction', 'comment']),
     body: z.string().min(1).max(1000),
   }),
+  /**
+   * Reactions (Big-Additive 1.2) — transient, Instagram-Live style. atSeq
+   * anchors to an event row; null = the live edge. Never persisted.
+   */
+  z.object({ t: z.literal('react'), sessionId: z.string(), emoji: z.string().min(1).max(8), atSeq: z.number().int().nullable() }),
   /** F9 — driver offers the wheel to a watching member. */
   z.object({ t: z.literal('handoff_offer'), sessionId: z.string(), toUserId: z.string() }),
   /** F9 — the offered member accepts or declines. */
@@ -176,6 +181,15 @@ export const serverMessageSchema = z.discriminatedUnion('t', [
     sessionId: z.string(),
     sessionTitle: z.string(),
     fromName: z.string(),
+  }),
+  /** 1.2 — a reaction raining on a session (broadcast-only, seq-less). */
+  z.object({
+    t: z.literal('reaction'),
+    sessionId: z.string(),
+    emoji: z.string(),
+    atSeq: z.number().int().nullable(),
+    byName: z.string(),
+    byColor: z.string(),
   }),
   /** F13 — targeted: a fresh notification for this user. */
   z.object({ t: z.literal('notification'), notification: notificationSchema }),

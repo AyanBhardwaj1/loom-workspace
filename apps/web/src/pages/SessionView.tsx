@@ -1,7 +1,7 @@
 import NumberFlow from '@number-flow/react'
 import { Check, Copy, Download, Eye, GitFork, Lightbulb, Link2, MonitorPlay, PanelRightClose, PanelRightOpen, Play, Repeat2 } from 'lucide-react'
 import { toast } from 'sonner'
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import { Group, Panel, Separator, type Layout } from 'react-resizable-panels'
 import { Drawer } from 'vaul'
@@ -11,6 +11,7 @@ import { ChatLog } from '../components/ChatLog'
 import { Composer } from '../components/Composer'
 import { PaneBoundary } from '../components/PaneBoundary'
 import { PreviewPane } from '../components/PreviewPane'
+import { SessionScrubber } from '../components/SessionScrubber'
 import { SpectatorSidebar } from '../components/SpectatorSidebar'
 import { Modal, Popover, PopoverContent, PopoverTrigger, Tooltip } from '../components/overlay'
 import { Avatar, Button, LivePill, MonoChip, Pill, Spinner, StatusDot, cn } from '../components/primitives'
@@ -53,6 +54,7 @@ export function SessionView() {
   const [shareUrl, setShareUrl] = useState<string | null>(null)
   const [shareCopied, setShareCopied] = useState(false)
   const [handoffOpen, setHandoffOpen] = useState(false)
+  const [jumpSeq, setJumpSeq] = useState<number | null>(null)
 
   useEffect(() => {
     localStorage.setItem('loom.sidebar.open', sidebarOpen ? '1' : '0')
@@ -82,6 +84,17 @@ export function SessionView() {
     setBrowserStreamingIndicator(streamingNow)
     return () => setBrowserStreamingIndicator(false)
   }, [streamingNow])
+
+  // 8.2 — #seq-N deep links: land scrolled to the exact event, flashed
+  const hashHandled = useRef(false)
+  useEffect(() => {
+    if (stream.loading || hashHandled.current) return
+    const m = /^#seq-(\d+)$/.exec(location.hash)
+    if (m) {
+      hashHandled.current = true
+      setJumpSeq(Number(m[1]))
+    }
+  }, [stream.loading])
 
   // F12 — the palette can trigger the export from anywhere in the session
   useEffect(() => {
@@ -126,6 +139,21 @@ export function SessionView() {
   const watchers = useMemo(() => feed.presence.filter((p) => p.viewing === sessionId), [feed.presence, sessionId])
   // F5: other viewers' read positions (never your own avatar)
   const readers = useMemo(() => watchers.filter((p) => p.userId !== user?.id), [watchers, user?.id])
+
+  // 1.1 — the driver feels the audience: toast when a watcher joins
+  const prevWatcherIds = useRef<Set<string>>(new Set())
+  useEffect(() => {
+    const ids = new Set(watchers.map((w) => w.userId))
+    if (isDriver) {
+      for (const w of watchers) {
+        if (w.userId !== user?.id && !prevWatcherIds.current.has(w.userId) && prevWatcherIds.current.size > 0) {
+          toast(`${w.name} is watching`)
+        }
+      }
+    }
+    prevWatcherIds.current = ids
+  }, [watchers, isDriver, user?.id])
+
   const previewReloadKey = useMemo(() => {
     let last = 0
     for (const e of stream.events) {
@@ -416,6 +444,9 @@ export function SessionView() {
             onFork={(eventId, anchorEl) => void fork(eventId, anchorEl)}
             reportReadingFor={!isDriver && !isEnded ? session.id : null}
             readers={readers}
+            onReact={!isDriver && !isEnded ? (emoji, atSeq) => wsClient.react(session.id, emoji, atSeq) : undefined}
+            jumpToSeq={jumpSeq}
+            onJumped={() => setJumpSeq(null)}
             pending={isDriver ? stream.pending : undefined}
             onRetryPending={stream.retryPending}
             onDiscardPending={stream.discardPending}
@@ -436,6 +467,8 @@ export function SessionView() {
             }
           />
           </PaneBoundary>
+
+          <SessionScrubber events={stream.events} driverColor={session.driverAvatarColor} onPeek={(seq) => setJumpSeq(seq)} />
 
           {isEnded && meta.digest ? (
             <div className="border-t border-hairline px-6 py-4">

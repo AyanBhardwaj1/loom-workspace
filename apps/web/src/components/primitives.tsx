@@ -265,17 +265,16 @@ export function SegmentedControl<T extends string>({
 /* ----------------------------------------------------------------------------
  * Feedback & meta-states
  * ------------------------------------------------------------------------- */
+/** 9.1 — the weave loader: three threads crossing instead of a generic ring. */
 export function Spinner({ className }: { className?: string }) {
   return (
-    <span
-      role="status"
-      aria-label="Loading"
-      className={cn(
-        'inline-block h-4 w-4 animate-spin rounded-full border border-hairline-strong border-t-lav-500',
-        className,
-      )}
-      style={{ animationDuration: '0.8s' }}
-    />
+    <span role="status" aria-label="Loading" className={cn('inline-block h-4 w-4', className)}>
+      <svg viewBox="0 0 16 16" className="weave-spinner h-full w-full" fill="none" aria-hidden>
+        <line x1="1" y1="5" x2="15" y2="5" stroke="var(--lav-500)" strokeWidth="1.5" />
+        <line x1="1" y1="8" x2="15" y2="8" stroke="var(--hairline-strong)" strokeWidth="1.5" />
+        <line x1="1" y1="11" x2="15" y2="11" stroke="var(--lav-300)" strokeWidth="1.5" />
+      </svg>
+    </span>
   )
 }
 

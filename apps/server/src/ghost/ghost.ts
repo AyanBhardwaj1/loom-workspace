@@ -1,7 +1,9 @@
 import { eq } from 'drizzle-orm'
+import type { ServerMessage } from '@loom/shared'
 import type { AgentOrchestrator } from '../agent/orchestrator'
 import type { DbHandle } from '../db/client'
 import type { ProjectService } from '../projects/service'
+import { projectTopic, sessionTopic, type EventBus } from '../realtime/bus'
 import type { SessionService } from '../sessions/service'
 
 /**
@@ -12,6 +14,8 @@ import type { SessionService } from '../sessions/service'
  */
 export class GhostCollaborator {
   private activeByProject = new Set<string>()
+  /** 1.2 — audience mode: projectId → unsubscribe (ghost reacts to human commits) */
+  private audience = new Map<string, () => void>()
 
   constructor(
     private deps: {
@@ -19,8 +23,42 @@ export class GhostCollaborator {
       projects: ProjectService
       sessions: SessionService
       orchestrator: AgentOrchestrator
+      bus: EventBus
     },
   ) {}
+
+  /**
+   * 1.2 — the ghost as audience: after a ghost run, it hangs around for an
+   * hour spectating. Human commits in the project get a reaction ~30% of the
+   * time (transient broadcast, never persisted) so solo demos feel inhabited.
+   */
+  private armAudience(projectId: string, ghost: { id: string; name: string; avatarColor: string }): void {
+    if (this.audience.has(projectId)) return
+    const EMOJI = ['🎉', '🔥', '👀', '❤️']
+    const unsub = this.deps.bus.subscribe(projectTopic(projectId), (raw) => {
+      const msg = raw as ServerMessage
+      if (msg.t !== 'project_update' || msg.update.kind !== 'change') return
+      const change = msg.update.change
+      if (change.authorUserId === ghost.id) return // never applaud itself
+      if (Math.random() > 0.3) return
+      const emoji = EMOJI[Math.floor(Math.random() * EMOJI.length)]!
+      setTimeout(() => {
+        this.deps.bus.publish(sessionTopic(change.sessionId), {
+          t: 'reaction',
+          sessionId: change.sessionId,
+          emoji,
+          atSeq: null,
+          byName: ghost.name,
+          byColor: ghost.avatarColor,
+        } satisfies ServerMessage)
+      }, 900 + Math.random() * 1600)
+    })
+    this.audience.set(projectId, unsub)
+    setTimeout(() => {
+      this.audience.get(projectId)?.()
+      this.audience.delete(projectId)
+    }, 60 * 60 * 1000).unref?.()
+  }
 
   isActive(projectId: string): boolean {
     return this.activeByProject.has(projectId)
@@ -47,6 +85,7 @@ export class GhostCollaborator {
 
     const session = await sessions.createSession(module.id, ghostUser)
     this.activeByProject.add(projectId)
+    this.armAudience(projectId, ghostUser)
 
     void this.runScript(projectId, session.id, ghostUser, scriptFor(module.name)).finally(() => {
       this.activeByProject.delete(projectId)

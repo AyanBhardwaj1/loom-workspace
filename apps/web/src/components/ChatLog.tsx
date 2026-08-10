@@ -15,6 +15,8 @@ import { Modal } from './overlay'
 const EvolutionPlayer = lazy(() => import('./EvolutionPlayer').then((m) => ({ default: m.EvolutionPlayer })))
 import { toDisplayItems, type RowActions } from './eventStream'
 import { eventGist } from '@loom/shared'
+import { useReactions } from './Reactions'
+import { Avatar } from './primitives'
 
 /**
  * The event log — every event sits on the thread. The thread is a real SVG
@@ -40,6 +42,9 @@ export function ChatLog({
   onRetryPending,
   onDiscardPending,
   testId,
+  onReact,
+  jumpToSeq,
+  onJumped,
 }: {
   events: SessionEvent[]
   streamingText: string
@@ -64,6 +69,11 @@ export function ChatLog({
   onDiscardPending?: (localId: string) => void
   /** stable hook for tests to scope this specific log */
   testId?: string
+  /** 1.2: spectators can rain reactions (driver just watches them) */
+  onReact?: (emoji: string, atSeq: number | null) => void
+  /** 4.1/8.2: scroll to a seq (scrubber peek / #seq-N deep links) */
+  jumpToSeq?: number | null
+  onJumped?: () => void
 }) {
   const containerRef = useRef<HTMLDivElement>(null)
   const contentRef = useRef<HTMLDivElement>(null)
@@ -80,6 +90,10 @@ export function ChatLog({
     () => ({ ...(actions ?? {}), onPlayEvolution: (path: string, steps: string[]) => setEvo({ path, steps }) }),
     [actions],
   )
+
+  // 1.2 — transient reaction rain + page-lifetime counters
+  const reactionSessionId = events.length > 0 ? events[0]!.sessionId : null
+  const { floats, counts } = useReactions(compact ? null : reactionSessionId)
 
   // only animate rows that arrive AFTER the initial load
   const baselineRef = useRef<number | null>(null)
@@ -221,6 +235,26 @@ export function ChatLog({
   })
   const virtualItems = virtualizer.getVirtualItems()
 
+  // 4.1/8.2 — jump to a seq (scrubber peek or a #seq-N deep link) + flash it
+  const [flashSeq, setFlashSeq] = useState<number | null>(null)
+  useEffect(() => {
+    if (jumpToSeq == null) return
+    const idx = items.findIndex((it) => {
+      const seq = it.kind === 'tool' ? it.call.seq : it.event.seq
+      return seq !== null && seq >= jumpToSeq
+    })
+    if (idx >= 0) {
+      setAtBottom(false)
+      virtualizer.scrollToIndex(idx, { align: 'center' })
+      setFlashSeq(jumpToSeq)
+      const t = setTimeout(() => setFlashSeq(null), 2000)
+      onJumped?.()
+      return () => clearTimeout(t)
+    }
+    onJumped?.()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [jumpToSeq])
+
   return (
     <div className="relative flex min-h-0 flex-1 flex-col" data-testid={testId}>
       <span aria-live="polite" role="status" className="sr-only">
@@ -263,12 +297,13 @@ export function ChatLog({
             {virtualItems.map((vi) => {
               const item = items[vi.index]!
               const eventId = itemKey(item, vi.index)
+              const seq = item.kind === 'tool' ? item.call.seq : item.event.seq
               return (
                 <div
                   key={vi.key}
                   ref={virtualizer.measureElement}
                   data-index={vi.index}
-                  className="absolute left-0 top-0 w-full"
+                  className={clsx('absolute left-0 top-0 w-full', flashSeq !== null && seq === flashSeq && 'animate-highlight rounded')}
                   style={{ transform: `translateY(${vi.start}px)` }}
                 >
                   <EventRow
@@ -282,6 +317,8 @@ export function ChatLog({
                     evolutions={evolutions}
                     readers={readersByEvent?.get(eventId)}
                     annotations={annotationsByTarget?.get(eventId)}
+                    onReact={onReact}
+                    reactionCounts={seq !== null ? counts.get(seq) : undefined}
                   />
                 </div>
               )
@@ -345,6 +382,59 @@ export function ChatLog({
           )}
         </div>
       </div>
+
+      {/* 1.2 — the rain: floats anchored to their rows, or the bottom-right live edge */}
+      {!compact && floats.length > 0 && (
+        <div aria-hidden className="pointer-events-none absolute inset-0 z-sticky overflow-hidden">
+          {floats.map((f) => {
+            const row =
+              f.atSeq !== null
+                ? (containerRef.current?.querySelector(`[data-seq="${f.atSeq}"]`) as HTMLElement | null)
+                : null
+            const cRect = containerRef.current?.getBoundingClientRect()
+            const rRect = row?.getBoundingClientRect()
+            const anchored = rRect && cRect && rRect.bottom > cRect.top && rRect.top < cRect.bottom
+            const left = anchored ? rRect.left - cRect.left + Math.min(rRect.width - 60, 340) : undefined
+            const top = anchored ? rRect.top - cRect.top + rRect.height / 2 : undefined
+            return (
+              <span
+                key={f.id}
+                className="reaction-float absolute"
+                style={
+                  anchored
+                    ? { left, top, ['--drift' as string]: `${f.drift * 28}px` }
+                    : { right: 48, bottom: 84, ['--drift' as string]: `${f.drift * 28}px` }
+                }
+              >
+                <span className="text-[20px] leading-none">{f.emoji}</span>
+                <span className="reaction-name block text-center text-[10px]" style={{ color: f.byColor }}>
+                  {f.byName}
+                </span>
+              </span>
+            )
+          })}
+        </div>
+      )}
+
+      {/* 1.1 — spectators at the live edge cluster in a quiet pill */}
+      {!compact && readers && readers.filter((r) => !r.readingEventId).length > 0 && (
+        <div className="absolute bottom-3 left-6 z-sticky flex items-center gap-1.5 rounded-full border border-hairline bg-overlay py-0.5 pl-1 pr-2 shadow-dropdown">
+          <span className="flex -space-x-1">
+            {readers
+              .filter((r) => !r.readingEventId)
+              .slice(0, 4)
+              .map((r) => (
+                <span key={r.userId} className="rounded-full ring-1 ring-overlay">
+                  <Avatar name={r.name} color={r.avatarColor} size="xs" title={`${r.name} — watching live`} />
+                </span>
+              ))}
+          </span>
+          <span className="inline-flex items-center gap-1 text-micro uppercase tracking-[0.08em] text-tertiary">
+            <span aria-hidden className="h-1.5 w-1.5 rounded-full bg-lav-500" />
+            live
+          </span>
+        </div>
+      )}
 
       {evo && (
         <Modal open onClose={() => setEvo(null)} title={`Evolution — ${evo.path}`} width={780}>

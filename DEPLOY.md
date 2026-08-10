@@ -99,6 +99,59 @@ or shared presence) is the path to multi-instance — it's a deliberate
 non-goal for now, and everything else (DB, git on a shared volume) is already
 multi-instance-shaped.
 
+## Putting it on the internet (two laptops, two accounts)
+
+Loom is **one Node process** that owns a real filesystem (git repos +
+worktrees), a SQLite file, and a WebSocket hub. That shape dictates where it
+can run:
+
+- **Cloudflare Workers / Pages: no.** Workers have no filesystem, no child
+  processes, no long-lived Node runtime — git worktrees can't exist there.
+  Don't try to port it; the architecture is the product.
+- **Cloudflare Tunnel in front of the Node server: yes.** Run the server
+  anywhere (a VPS, Fly.io, Railway, Render, even the laptop it's on today)
+  and let Cloudflare give it a public HTTPS URL. Cloudflare proxies
+  WebSockets natively, and the server's 30s heartbeat keeps sockets alive
+  through Cloudflare's ~100s idle timeout.
+
+### The 5-minute path (Cloudflare Tunnel)
+
+```bash
+# 1. build the frontend once — the server serves it on one port
+pnpm install && pnpm --filter @loom/web build
+
+# 2. run the server in production mode
+cd apps/server
+NODE_ENV=production COOKIE_SECRET="$(openssl rand -hex 32)" PORT=3001 pnpm start
+
+# 3. in another terminal, tunnel it (install: brew install cloudflared)
+cloudflared tunnel --url http://localhost:3001
+```
+
+`cloudflared` prints a public `https://<something>.trycloudflare.com` URL.
+Open it on both laptops, **Create an account** on each (dev quick-logins are
+disabled in production), and add the second account to your project
+(project members) — from there everything is live for both: spectating,
+streaming tokens, forks, reactions, suggestions, handoffs, notifications.
+
+For a permanent hostname, create a named tunnel bound to your own domain
+(`cloudflared tunnel create loom` + a `config.yml` route) — same server,
+same env.
+
+### Production checklist
+
+- `NODE_ENV=production` — disables dev quick-login and the ghost route.
+- `COOKIE_SECRET` — a long random value; sessions break without it.
+- TLS/cookies — behind Cloudflare (or any proxy setting
+  `X-Forwarded-Proto`), auth cookies turn `Secure` automatically
+  (`trustProxy` is on). `COOKIE_SECURE=1` forces it regardless.
+- `PUBLIC_ORIGINS` — only needed if your proxy rewrites the Host header;
+  comma-separated origins allowed past the CSRF origin check.
+- One instance is the sweet spot (SQLite + local worktrees). Scaling out
+  needs `DATABASE_URL` + `REDIS_URL` + sticky sessions — see "Scaling out".
+- An Anthropic/OpenRouter key is optional: paste one in ⚙ AI provider
+  after deploying, or run the free mock agent forever.
+
 ## Scaling out (multi-instance)
 
 Set `REDIS_URL` and the event bus rides Redis pub/sub (`RedisEventBus`) — all

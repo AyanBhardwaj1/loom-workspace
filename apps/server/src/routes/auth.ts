@@ -25,7 +25,7 @@ export async function authRoutes(app: FastifyInstance, services: Services): Prom
     const res = await auth.signup(body.name, body.email, body.password)
     if (!res.ok) return reply.code(409).send({ error: res.error })
     const token = await auth.createAuthSession(res.user.id)
-    setSessionCookie(reply, token, config)
+    setSessionCookie(reply, token, config, req)
     return { user: toPublicUser(res.user) }
   })
 
@@ -35,7 +35,7 @@ export async function authRoutes(app: FastifyInstance, services: Services): Prom
     const user = await auth.login(body.email, body.password)
     if (!user) return reply.code(401).send({ error: 'Wrong email or password' })
     const token = await auth.createAuthSession(user.id)
-    setSessionCookie(reply, token, config)
+    setSessionCookie(reply, token, config, req)
     return { user: toPublicUser(user) }
   })
 
@@ -64,7 +64,7 @@ export async function authRoutes(app: FastifyInstance, services: Services): Prom
       const user = await auth.getUserById(body.userId)
       if (!user) return reply.code(404).send({ error: 'User not found' })
       const token = await auth.createAuthSession(user.id)
-      setSessionCookie(reply, token, config)
+      setSessionCookie(reply, token, config, req)
       return { user: toPublicUser(user) }
     })
   }
