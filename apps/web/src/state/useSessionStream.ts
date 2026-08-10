@@ -85,6 +85,24 @@ export function useSessionStream(sessionId: string | null): SessionStream {
               prev ? { ...prev, session: { ...prev.session, status: 'ended' } } : prev,
             )
           }
+          // F9 — a handoff status carries the new driver; every viewer's
+          // detail (and therefore composer ownership) flips at the seam
+          if (e.payload.newDriverUserId) {
+            const { newDriverUserId, newDriverName, newDriverColor } = e.payload
+            setDetail((prev) =>
+              prev
+                ? {
+                    ...prev,
+                    session: {
+                      ...prev.session,
+                      driverUserId: newDriverUserId,
+                      driverName: newDriverName ?? prev.session.driverName,
+                      driverAvatarColor: newDriverColor ?? prev.session.driverAvatarColor,
+                    },
+                  }
+                : prev,
+            )
+          }
         }
         if (e.type === 'user_message') {
           setAgentStatus('thinking')

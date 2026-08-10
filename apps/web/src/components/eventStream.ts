@@ -32,6 +32,8 @@ export interface RowActions {
   projectId?: string
   /** F4: open the evolution player at the log root (survives row recycling) */
   onPlayEvolution?: (path: string, steps: string[]) => void
+  /** F8: pin a reaction ('up'|'spark'|'question'|'flag') or comment to an event */
+  onAnnotate?: (targetEventId: string, kind: 'reaction' | 'comment', body: string) => void
 }
 
 export function toDisplayItems(events: SessionEvent[]): DisplayItem[] {
@@ -91,6 +93,9 @@ export function toDisplayItems(events: SessionEvent[]): DisplayItem[] {
         break
       case 'usage':
         // metadata for the cost chip, not a chat row
+        break
+      case 'annotation':
+        // F8: attaches under its target event (ChatLog groups them)
         break
       default:
         break

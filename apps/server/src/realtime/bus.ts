@@ -16,6 +16,8 @@ export interface EventBus {
 
 export const sessionTopic = (sessionId: string) => `session:${sessionId}`
 export const projectTopic = (projectId: string) => `project:${projectId}`
+/** F9/F13 — targeted messages (handoff prompts, notifications) per user. */
+export const userTopic = (userId: string) => `user:${userId}`
 
 export class InProcessEventBus implements EventBus {
   private handlers = new Map<string, Set<BusHandler>>()

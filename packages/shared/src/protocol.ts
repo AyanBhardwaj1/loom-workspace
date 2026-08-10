@@ -43,6 +43,18 @@ export const clientMessageSchema = z.discriminatedUnion('t', [
    * client-side. Ephemeral (never persisted); null clears it.
    */
   z.object({ t: z.literal('reading'), sessionId: z.string(), eventId: z.string().nullable() }),
+  /** F8 — pin a reaction or comment to an earlier event (any project member). */
+  z.object({
+    t: z.literal('annotate'),
+    sessionId: z.string(),
+    targetEventId: z.string(),
+    kind: z.enum(['reaction', 'comment']),
+    body: z.string().min(1).max(1000),
+  }),
+  /** F9 — driver offers the wheel to a watching member. */
+  z.object({ t: z.literal('handoff_offer'), sessionId: z.string(), toUserId: z.string() }),
+  /** F9 — the offered member accepts or declines. */
+  z.object({ t: z.literal('handoff_response'), sessionId: z.string(), accept: z.boolean() }),
 ])
 
 export type ClientMessage = z.infer<typeof clientMessageSchema>
@@ -141,11 +153,32 @@ export const projectUpdateSchema = z.discriminatedUnion('kind', [
 ])
 export type ProjectUpdate = z.infer<typeof projectUpdateSchema>
 
+/** F13 — a per-user notification row. */
+export const notificationSchema = z.object({
+  id: z.string(),
+  kind: z.enum(['fork', 'merge', 'annotation', 'handoff']),
+  text: z.string(),
+  projectId: z.string().nullable(),
+  sessionId: z.string().nullable(),
+  readAt: z.string().nullable(),
+  createdAt: z.string(),
+})
+export type NotificationDto = z.infer<typeof notificationSchema>
+
 export const serverMessageSchema = z.discriminatedUnion('t', [
   z.object({ t: z.literal('event'), sessionId: z.string(), event: sessionEventSchema }),
   z.object({ t: z.literal('catchup_batch'), sessionId: z.string(), events: z.array(sessionEventSchema) }),
   z.object({ t: z.literal('presence'), projectId: z.string(), users: z.array(presenceUserSchema) }),
   z.object({ t: z.literal('project_update'), projectId: z.string(), update: projectUpdateSchema }),
+  /** F9 — targeted: the driver offered YOU the wheel. */
+  z.object({
+    t: z.literal('handoff_request'),
+    sessionId: z.string(),
+    sessionTitle: z.string(),
+    fromName: z.string(),
+  }),
+  /** F13 — targeted: a fresh notification for this user. */
+  z.object({ t: z.literal('notification'), notification: notificationSchema }),
   z.object({ t: z.literal('error'), code: z.string(), message: z.string() }),
 ])
 

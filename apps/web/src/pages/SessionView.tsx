@@ -1,5 +1,6 @@
 import NumberFlow from '@number-flow/react'
-import { Eye, GitFork, Lightbulb, MonitorPlay, PanelRightClose, PanelRightOpen, Play } from 'lucide-react'
+import { Check, Copy, Download, Eye, GitFork, Lightbulb, Link2, MonitorPlay, PanelRightClose, PanelRightOpen, Play, Repeat2 } from 'lucide-react'
+import { toast } from 'sonner'
 import { useEffect, useMemo, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import { Group, Panel, Separator, type Layout } from 'react-resizable-panels'
@@ -10,11 +11,12 @@ import { ChatLog } from '../components/ChatLog'
 import { Composer } from '../components/Composer'
 import { PreviewPane } from '../components/PreviewPane'
 import { SpectatorSidebar } from '../components/SpectatorSidebar'
-import { Tooltip } from '../components/overlay'
+import { Modal, Popover, PopoverContent, PopoverTrigger, Tooltip } from '../components/overlay'
 import { Avatar, Button, LivePill, MonoChip, Pill, Spinner, StatusDot, cn } from '../components/primitives'
 import { api } from '../lib/api'
 import { momentFork } from '../lib/choreography'
 import { setBrowserStreamingIndicator } from '../lib/brand'
+import { downloadMarkdown, sessionToMarkdown } from '../lib/exportMarkdown'
 import { useMediaQuery } from '../lib/useMediaQuery'
 import { wsClient } from '../lib/ws'
 import { useAuth } from '../state/auth'
@@ -46,6 +48,10 @@ export function SessionView() {
   const [serverError, setServerError] = useState<string | null>(null)
   const [suggestText, setSuggestText] = useState('')
   const [suggestSent, setSuggestSent] = useState(false)
+  const [shareOpen, setShareOpen] = useState(false)
+  const [shareUrl, setShareUrl] = useState<string | null>(null)
+  const [shareCopied, setShareCopied] = useState(false)
+  const [handoffOpen, setHandoffOpen] = useState(false)
 
   useEffect(() => {
     localStorage.setItem('loom.sidebar.open', sidebarOpen ? '1' : '0')
@@ -75,6 +81,30 @@ export function SessionView() {
     setBrowserStreamingIndicator(streamingNow)
     return () => setBrowserStreamingIndicator(false)
   }, [streamingNow])
+
+  // F12 — the palette can trigger the export from anywhere in the session
+  useEffect(() => {
+    const onExport = () => {
+      if (!stream.detail) return
+      const title = stream.detail.session.title.replace(/[^\w.-]+/g, '-')
+      downloadMarkdown(`${title}.md`, sessionToMarkdown(stream.detail, stream.events))
+      toast('Exported session.md')
+    }
+    window.addEventListener('loom:export', onExport)
+    return () => window.removeEventListener('loom:export', onExport)
+  }, [stream.detail, stream.events])
+
+  // F8 — the driver hears about reactions/comments as they land
+  useEffect(() => {
+    if (!sessionId) return
+    return wsClient.onMessage((msg) => {
+      if (msg.t !== 'event' || msg.sessionId !== sessionId) return
+      if (msg.event.type !== 'annotation') return
+      if (!user || msg.event.payload.authorUserId === user.id) return
+      const p = msg.event.payload
+      toast(p.kind === 'comment' ? `${p.authorName} commented: ${p.body.slice(0, 60)}` : `${p.authorName} reacted to your work`)
+    })
+  }, [sessionId, user])
 
   // surface rejected messages instead of eating them
   useEffect(() => {
@@ -120,6 +150,16 @@ export function SessionView() {
       setServerError(err instanceof Error ? err.message : 'Fork failed')
     } finally {
       setForking(false)
+    }
+  }
+
+  const openShare = async () => {
+    try {
+      const res = await api.post<{ url: string }>(`/api/sessions/${sessionId}/share`)
+      setShareUrl(`${location.origin}${res.url}`)
+    } catch (err) {
+      toast(err instanceof Error ? err.message : 'Could not create the link')
+      setShareOpen(false)
     }
   }
 
@@ -230,6 +270,92 @@ export function SessionView() {
               End
             </Button>
           )}
+          <Tooltip content="Export the session as Markdown">
+            <span>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => {
+                  downloadMarkdown(`${session.title.replace(/[^\w.-]+/g, '-')}.md`, sessionToMarkdown(meta, stream.events))
+                  toast('Exported session.md')
+                }}
+              >
+                <Download size={14} strokeWidth={1.5} />
+              </Button>
+            </span>
+          </Tooltip>
+          {isDriver && !isEnded && (
+            <Popover open={shareOpen} onOpenChange={(v) => { setShareOpen(v); if (v) void openShare() }}>
+              <PopoverTrigger asChild>
+                <Button variant="ghost" size="sm">
+                  <Link2 size={14} strokeWidth={1.5} />
+                  Share
+                </Button>
+              </PopoverTrigger>
+              <PopoverContent align="end" className="w-80">
+                <div className="text-ui text-primary">Read-only share link</div>
+                <div className="mt-2 flex gap-1.5">
+                  <input readOnly value={shareUrl ?? 'Creating link…'} className="loom-input py-1.5 font-mono text-code-sm" />
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    disabled={!shareUrl}
+                    onClick={async () => {
+                      if (!shareUrl) return
+                      await navigator.clipboard.writeText(shareUrl)
+                      setShareCopied(true)
+                      setTimeout(() => setShareCopied(false), 1200)
+                    }}
+                  >
+                    {shareCopied ? <Check size={13} strokeWidth={2} className="text-ok" /> : <Copy size={13} strokeWidth={1.5} />}
+                  </Button>
+                </div>
+                <p className="mt-2 text-small leading-relaxed text-tertiary">Anyone with the link can view this session.</p>
+                <Button
+                  variant="danger"
+                  size="sm"
+                  className="mt-2"
+                  onClick={async () => {
+                    await api.del(`/api/sessions/${session.id}/share`)
+                    setShareUrl(null)
+                    setShareOpen(false)
+                    toast('Share link revoked')
+                  }}
+                >
+                  Revoke link
+                </Button>
+              </PopoverContent>
+            </Popover>
+          )}
+          {isDriver && !isEnded && watchers.some((w) => w.userId !== user?.id) && (
+            <Popover open={handoffOpen} onOpenChange={setHandoffOpen}>
+              <PopoverTrigger asChild>
+                <Button variant="ghost" size="sm" title="Pass the wheel to a watcher">
+                  <Repeat2 size={14} strokeWidth={1.5} />
+                  Pass the wheel
+                </Button>
+              </PopoverTrigger>
+              <PopoverContent align="end" className="w-64 p-1.5">
+                <div className="px-2 pb-1.5 pt-1 text-micro uppercase tracking-[0.08em] text-tertiary">Offer the wheel to</div>
+                {watchers
+                  .filter((w) => w.userId !== user?.id)
+                  .map((w) => (
+                    <button
+                      key={w.userId}
+                      onClick={() => {
+                        wsClient.handoffOffer(session.id, w.userId)
+                        setHandoffOpen(false)
+                        toast(`Offered the wheel to ${w.name}`)
+                      }}
+                      className="flex h-9 w-full items-center gap-2.5 rounded px-2 text-left text-ui text-secondary transition-colors duration-micro hover:bg-raised hover:text-primary"
+                    >
+                      <Avatar name={w.name} color={w.avatarColor} size="sm" />
+                      {w.name}
+                    </button>
+                  ))}
+              </PopoverContent>
+            </Popover>
+          )}
           <Tooltip content="Replay — scrub, play back, fork from any point">
             <Link to={`/replay/${session.id}`}>
               <Button variant="ghost" size="sm">
@@ -292,6 +418,11 @@ export function SessionView() {
               isDriver,
               projectId,
               onResolveSuggestion: (suggestionId, decision) => wsClient.resolveSuggestion(session.id, suggestionId, decision),
+              onAnnotate: (targetEventId, kind, body) => {
+                if (!wsClient.annotate(session.id, targetEventId, kind, body)) {
+                  toast('Connection lost — try again in a second.')
+                }
+              },
             }}
             emptyHint={
               isDriver

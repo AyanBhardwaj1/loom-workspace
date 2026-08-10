@@ -11,9 +11,14 @@ import {
   FileText,
   FolderTree,
   GitFork,
+  HelpCircle,
   Lightbulb,
+  Plus,
+  Sparkles,
   Terminal,
+  ThumbsUp,
   Trash2,
+  TriangleAlert,
   X,
 } from 'lucide-react'
 import { memo, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
@@ -55,6 +60,7 @@ export const EventRow = memo(function EventRow({
   actions,
   evolutions,
   readers,
+  annotations,
 }: {
   item: DisplayItem
   compact?: boolean
@@ -68,11 +74,14 @@ export const EventRow = memo(function EventRow({
   evolutions?: Map<string, string[]> | null
   /** F5: viewers whose read position sits on this event */
   readers?: PresenceUser[]
+  /** F8: annotations pinned to this event */
+  annotations?: Array<SessionEventOf<'annotation'>>
 }) {
   const forkId = item.kind === 'tool' ? item.call.id : item.event.id
   const isCommit = item.kind === 'commit'
   const rowRef = useRef<HTMLDivElement>(null)
   const [confirmOpen, setConfirmOpen] = useState(false)
+  const [annotateOpen, setAnnotateOpen] = useState(false)
 
   return (
     <div
@@ -150,12 +159,129 @@ export const EventRow = memo(function EventRow({
           </PopoverContent>
         </Popover>
       )}
+      {/* F8 — annotate affordance beside the fork icon */}
+      {actions?.onAnnotate && item.kind !== 'fork' && item.kind !== 'suggestion' && !compact && (
+        <Popover open={annotateOpen} onOpenChange={setAnnotateOpen}>
+          <PopoverTrigger asChild>
+            <button
+              title="React or comment"
+              className={clsx(
+                'absolute right-7 top-1.5 z-0 h-6 w-6 items-center justify-center rounded text-tertiary transition-colors duration-micro hover:bg-raised hover:text-primary',
+                annotateOpen ? 'flex' : 'hidden group-hover:flex',
+              )}
+            >
+              <Plus size={14} strokeWidth={1.5} />
+            </button>
+          </PopoverTrigger>
+          <PopoverContent side="left" align="start" className="w-64">
+            <AnnotatePopover
+              onReact={(name) => {
+                actions.onAnnotate!(forkId, 'reaction', name)
+                setAnnotateOpen(false)
+              }}
+              onComment={(text) => {
+                actions.onAnnotate!(forkId, 'comment', text)
+                setAnnotateOpen(false)
+              }}
+            />
+          </PopoverContent>
+        </Popover>
+      )}
       <div className={compact ? '' : 'pl-6 pr-8'}>
         <RowBody item={item} compact={compact} driverName={driverName} driverColor={driverColor} animate={animate} actions={actions} evolutions={evolutions} />
+        {annotations && annotations.length > 0 && <AnnotationPills annotations={annotations} />}
       </div>
     </div>
   )
 })
+
+/* ----------------------------------------------------------------------------
+ * F8 — reactions & comments: lucide glyphs, 20px pills tucked under the event
+ * ------------------------------------------------------------------------- */
+const REACTIONS: Array<{ name: string; icon: ReactNode; label: string }> = [
+  { name: 'up', icon: <ThumbsUp size={13} strokeWidth={1.5} />, label: 'Nice' },
+  { name: 'spark', icon: <Sparkles size={13} strokeWidth={1.5} />, label: 'Brilliant' },
+  { name: 'question', icon: <HelpCircle size={13} strokeWidth={1.5} />, label: 'Why?' },
+  { name: 'flag', icon: <TriangleAlert size={13} strokeWidth={1.5} />, label: 'Careful' },
+]
+
+function AnnotatePopover({ onReact, onComment }: { onReact: (name: string) => void; onComment: (text: string) => void }) {
+  const [text, setText] = useState('')
+  return (
+    <div className="space-y-2">
+      <div className="flex gap-1">
+        {REACTIONS.map((r) => (
+          <button
+            key={r.name}
+            title={r.label}
+            onClick={() => onReact(r.name)}
+            className="flex h-7 w-7 items-center justify-center rounded border border-hairline text-secondary transition-colors duration-micro hover:border-hairline-hover hover:text-primary"
+          >
+            {r.icon}
+          </button>
+        ))}
+      </div>
+      <form
+        onSubmit={(e) => {
+          e.preventDefault()
+          if (text.trim()) onComment(text.trim())
+        }}
+        className="flex gap-1.5"
+      >
+        <input
+          value={text}
+          onChange={(e) => setText(e.target.value)}
+          placeholder="Add a comment…"
+          maxLength={1000}
+          className="loom-input py-1.5 text-small"
+        />
+        <Button type="submit" variant="primary" size="sm" disabled={!text.trim()}>
+          Send
+        </Button>
+      </form>
+    </div>
+  )
+}
+
+function AnnotationPills({ annotations }: { annotations: Array<SessionEventOf<'annotation'>> }) {
+  const [openComment, setOpenComment] = useState<string | null>(null)
+  const reactions = annotations.filter((a) => a.payload.kind === 'reaction')
+  const comments = annotations.filter((a) => a.payload.kind === 'comment')
+  const grouped = new Map<string, { count: number; names: string[] }>()
+  for (const r of reactions) {
+    const g = grouped.get(r.payload.body) ?? { count: 0, names: [] }
+    g.count++
+    g.names.push(r.payload.authorName)
+    grouped.set(r.payload.body, g)
+  }
+  return (
+    <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
+      {[...grouped.entries()].map(([name, g]) => {
+        const def = REACTIONS.find((r) => r.name === name)
+        return (
+          <span
+            key={name}
+            title={g.names.join(', ')}
+            className="tnum inline-flex h-5 items-center gap-1 rounded-full border border-hairline bg-surface px-1.5 font-mono text-small text-secondary"
+          >
+            {def?.icon ?? name}
+            {g.count > 1 ? g.count : null}
+          </span>
+        )
+      })}
+      {comments.map((c) => (
+        <button
+          key={c.id}
+          onClick={() => setOpenComment((v) => (v === c.id ? null : c.id))}
+          className="inline-flex h-5 max-w-[18rem] items-center gap-1.5 truncate rounded-full border border-hairline bg-surface px-1.5 text-small text-secondary transition-colors duration-micro hover:border-hairline-hover"
+        >
+          <Avatar name={c.payload.authorName} color={c.payload.authorColor} size="xs" />
+          <span className="truncate">{openComment === c.id ? c.payload.body : c.payload.body.slice(0, 32) + (c.payload.body.length > 32 ? '…' : '')}</span>
+        </button>
+      ))}
+    </div>
+  )
+}
 
 function RowBody({
   item,

@@ -161,6 +161,19 @@ export function CommandPalette() {
                 Replay this session
               </Row>
             )}
+            {sessionId && (
+              <Row
+                value="export session as markdown download"
+                onSelect={() =>
+                  void run(() => {
+                    window.dispatchEvent(new CustomEvent('loom:export'))
+                  })
+                }
+                icon={<SquareTerminal size={16} strokeWidth={1.5} />}
+              >
+                Export session as Markdown
+              </Row>
+            )}
             <Row value="open version history" onSelect={() => go(`/p/${projectId}/history`)} icon={<History size={16} strokeWidth={1.5} />}>
               Open version history
             </Row>

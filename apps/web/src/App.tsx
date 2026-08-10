@@ -1,5 +1,6 @@
 import { Navigate, Route, Routes } from 'react-router-dom'
 import { CommandPalette } from './components/CommandPalette'
+import { HandoffListener } from './components/HandoffListener'
 import { Shortcuts } from './components/Shortcuts'
 import { Spinner } from './components/primitives'
 import { HistoryPage } from './pages/HistoryPage'
@@ -10,6 +11,7 @@ import { ProjectDashboard } from './pages/ProjectDashboard'
 import { ProjectShell } from './pages/ProjectShell'
 import { ReplayView } from './pages/ReplayView'
 import { SessionView } from './pages/SessionView'
+import { SharedView } from './pages/SharedView'
 import { useAuth } from './state/auth'
 
 export default function App() {
@@ -26,6 +28,7 @@ export default function App() {
   if (!user) {
     return (
       <Routes>
+        <Route path="/shared/:token" element={<SharedView />} />
         <Route path="*" element={<Login />} />
       </Routes>
     )
@@ -36,6 +39,7 @@ export default function App() {
       <Routes>
         <Route path="/" element={<Home />} />
         <Route path="/replay/:sessionId" element={<ReplayView />} />
+        <Route path="/shared/:token" element={<SharedView />} />
         <Route path="/p/:projectId" element={<ProjectShell />}>
           <Route index element={<ProjectDashboard />} />
           <Route path="m/:moduleId" element={<ModuleView />} />
@@ -46,6 +50,7 @@ export default function App() {
       </Routes>
       <CommandPalette />
       <Shortcuts />
+      <HandoffListener />
     </>
   )
 }

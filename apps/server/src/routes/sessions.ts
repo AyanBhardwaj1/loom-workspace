@@ -86,10 +86,62 @@ export async function sessionRoutes(app: FastifyInstance, services: Services): P
     if (!body) return
     try {
       const fork = await sessions.forkSession(id, req.currentUser, body.atEventId)
+      // F13 — tell the source driver their work grew a branch
+      if (source.driverUserId !== req.currentUser.id) {
+        await services.notifications.create({
+          userId: source.driverUserId,
+          kind: 'fork',
+          text: `${req.currentUser.name} forked your session "${source.title}"`,
+          projectId: source.projectId,
+          sessionId: fork.id,
+        })
+      }
       return reply.code(201).send({ session: await sessions.toSummary(fork) })
     } catch (err) {
       return reply.code(400).send({ error: err instanceof Error ? err.message : 'Fork failed' })
     }
+  })
+
+  // F11 — share links: driver mints a revocable read-only token
+  app.post('/api/sessions/:id/share', { preHandler: requireUser }, async (req, reply) => {
+    const { id } = req.params as { id: string }
+    const session = await sessions.getSession(id)
+    if (!session) return reply.code(404).send({ error: 'Session not found' })
+    if (session.driverUserId !== req.currentUser.id) {
+      return reply.code(403).send({ error: 'Only the driver can share a session' })
+    }
+    const token = session.shareToken ?? (await sessions.setShareToken(id))
+    return { token, url: `/shared/${token}` }
+  })
+
+  app.delete('/api/sessions/:id/share', { preHandler: requireUser }, async (req, reply) => {
+    const { id } = req.params as { id: string }
+    const session = await sessions.getSession(id)
+    if (!session) return reply.code(404).send({ error: 'Session not found' })
+    if (session.driverUserId !== req.currentUser.id) {
+      return reply.code(403).send({ error: 'Only the driver can revoke a share link' })
+    }
+    await sessions.clearShareToken(id)
+    return { ok: true }
+  })
+
+  // F11 — the public read-only view: token IS the credential (no login)
+  app.get('/api/shared/:token', async (req, reply) => {
+    const { token } = req.params as { token: string }
+    if (!token || token.length < 16) return reply.code(404).send({ error: 'Not found' })
+    const session = await sessions.getSessionByShareToken(token)
+    if (!session) return reply.code(404).send({ error: 'This link was revoked or never existed' })
+    const events = await sessions.getEvents(session.id)
+    const module = await projects.getModule(session.moduleId)
+    const detail: SessionDetail = {
+      session: await sessions.toSummary(session),
+      moduleName: module?.name ?? 'Unknown module',
+      moduleEmoji: module?.emoji ?? '📦',
+      events,
+      lastSeq: events.length > 0 ? (events[events.length - 1]!.seq ?? 0) : 0,
+      digest: parseDigest(session.digest),
+    }
+    return detail
   })
 
   app.post('/api/sessions/:id/end', { preHandler: requireUser }, async (req, reply) => {

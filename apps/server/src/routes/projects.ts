@@ -240,6 +240,19 @@ export async function projectRoutes(app: FastifyInstance, services: Services): P
       return reply.code(400).send({ error: 'Only session branches can be merged' })
     }
     const result = await merge.mergeBranch(id, body.branchName, req.currentUser)
+    // F13 — the branch's driver hears their work reached main
+    if (result.ok) {
+      const branchSession = await services.sessions.getSessionByBranch(id, body.branchName)
+      if (branchSession && branchSession.driverUserId !== req.currentUser.id) {
+        await services.notifications.create({
+          userId: branchSession.driverUserId,
+          kind: 'merge',
+          text: `${req.currentUser.name} merged "${branchSession.title}" into main`,
+          projectId: id,
+          sessionId: branchSession.id,
+        })
+      }
+    }
     return result
   })
 }

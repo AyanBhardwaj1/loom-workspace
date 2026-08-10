@@ -180,6 +180,26 @@ class WSClient {
     this.raw({ t: 'catchup', sessionId, afterSeq })
   }
 
+  /** F8: pin a reaction or comment to an event. */
+  annotate(sessionId: string, targetEventId: string, kind: 'reaction' | 'comment', body: string): boolean {
+    if (!this.isOpen()) {
+      this.connect()
+      return false
+    }
+    this.raw({ t: 'annotate', sessionId, targetEventId, kind, body })
+    return true
+  }
+
+  /** F9: driver offers the wheel to a member. */
+  handoffOffer(sessionId: string, toUserId: string): void {
+    this.raw({ t: 'handoff_offer', sessionId, toUserId })
+  }
+
+  /** F9: the offered member accepts or declines. */
+  handoffResponse(sessionId: string, accept: boolean): void {
+    this.raw({ t: 'handoff_response', sessionId, accept })
+  }
+
   /** C4: called on visibilitychange→visible — reconnect now or re-catchup. */
   resyncAfterWake(): void {
     if (this.closedByUser) return

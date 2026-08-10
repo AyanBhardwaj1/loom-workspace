@@ -8,6 +8,7 @@ import { authRoutes } from './routes/auth'
 import { devRoutes } from './routes/dev'
 import { previewRoutes } from './routes/preview'
 import { projectRoutes } from './routes/projects'
+import { notificationRoutes } from './routes/notifications'
 import { replayRoutes } from './routes/replay'
 import { sessionRoutes } from './routes/sessions'
 import { settingsRoutes } from './routes/settings'
@@ -30,6 +31,7 @@ export async function buildApp(services: Services): Promise<FastifyInstance> {
   await settingsRoutes(app, services)
   await previewRoutes(app, services)
   await replayRoutes(app, services)
+  await notificationRoutes(app, services)
   if (config.isDev) {
     await devRoutes(app, services)
   }

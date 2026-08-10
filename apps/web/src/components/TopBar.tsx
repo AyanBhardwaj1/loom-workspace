@@ -6,6 +6,7 @@ import type { ProjectSummary, PresenceUser } from '@loom/shared'
 import { api } from '../lib/api'
 import { useAuth } from '../state/auth'
 import { AiSettingsDialog } from './AiSettingsDialog'
+import { NotificationBell } from './NotificationBell'
 import { Avatar, IconButton, cn } from './primitives'
 import { Popover, PopoverContent, PopoverTrigger } from './overlay'
 import { Wordmark } from './Wordmark'
@@ -115,6 +116,8 @@ export function TopBar({
             ))}
           </div>
         )}
+
+        <NotificationBell />
 
         <IconButton label="AI provider settings" onClick={() => setAiOpen(true)}>
           <Settings size={16} strokeWidth={1.5} />

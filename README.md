@@ -19,6 +19,38 @@ Seeded with five founders — Prithviraj, Ayan, Sai, Ashwin and Aarush — and a
 demo project (**Nimbus**, a team wiki app) so the multiplayer moment is 60
 seconds away.
 
+## Features
+
+Everything below is discoverable from the **⌘K palette** and a visible control:
+
+- **Live spectate + fork** — watch any teammate's stream; *Fork & continue*
+  from the latest point, or hover any event and fork from exactly there.
+- **Session replay** — every session is a replayable object: scrub, play at
+  1×/2×/4×, step with ←/→, fork from any point (`r` inside a session).
+- **File evolution player** — files touched more than once get *Play
+  evolution*: a token-level magic-move through each saved state.
+- **Live preview** — the session's build served in a sandboxed iframe,
+  reloading on every commit; *Preview main* shows the merged product.
+- **Suggestions** — spectators propose next steps; the driver accepts (runs
+  as a credited turn) or dismisses.
+- **Reactions & comments** — pin a reaction or comment to any event without
+  interrupting the driver; they land in the log and in replays.
+- **Pass the wheel** — atomic driver handoff: offer → accept → the log
+  continues unbroken and the composer changes hands.
+- **Live read presence** — spectators' avatars dock to the thread beside the
+  event they're reading — co-presence, Figma-style.
+- **Stop generation** — interrupt mid-turn; partial work is still committed.
+- **Share links** — revocable read-only links (`/shared/<token>`), no login.
+- **Export as Markdown** — the full transcript, diffs and commits as one file.
+- **Session digest** — every ended session closes with an artifact: bullets,
+  files, commit count, duration, and *Fork & continue*.
+- **Notifications** — forked/merged/reacted/handoff, live-pushed with a quiet
+  lavender dot.
+- **Cost visibility** — live token/cost meter per session and per module
+  (hidden in mock mode).
+- **Keyboard-first** — `⌘K` palette, `?` shortcut sheet, `h` history,
+  `[` `]` spectate panel.
+
 ## The architectural insight
 
 **No CRDTs. No operational transforms.** Each session has exactly one writer

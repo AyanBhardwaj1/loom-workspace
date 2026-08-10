@@ -2,7 +2,7 @@ import { useVirtualizer } from '@tanstack/react-virtual'
 import { clsx } from 'clsx'
 import { ArrowDown } from 'lucide-react'
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
-import type { AgentActivityStatus, PresenceUser, SessionEvent } from '@loom/shared'
+import type { AgentActivityStatus, PresenceUser, SessionEvent, SessionEventOf } from '@loom/shared'
 import { momentAgentAwakens, momentSessionStart } from '../lib/choreography'
 import { buildEvolutions } from '../lib/diff'
 import { wsClient } from '../lib/ws'
@@ -159,6 +159,18 @@ export function ChatLog({
     }
   }, [])
 
+  // F8 — annotations grouped under their target events
+  const annotationsByTarget = useMemo(() => {
+    const map = new Map<string, Array<SessionEventOf<'annotation'>>>()
+    for (const e of events) {
+      if (e.type !== 'annotation') continue
+      const list = map.get(e.payload.targetEventId) ?? []
+      list.push(e)
+      map.set(e.payload.targetEventId, list)
+    }
+    return map.size > 0 ? map : null
+  }, [events])
+
   // F5 — other viewers' read positions, grouped per event
   const readersByEvent = useMemo(() => {
     if (!readers || readers.length === 0) return null
@@ -247,6 +259,7 @@ export function ChatLog({
                     actions={rowActions}
                     evolutions={evolutions}
                     readers={readersByEvent?.get(eventId)}
+                    annotations={annotationsByTarget?.get(eventId)}
                   />
                 </div>
               )

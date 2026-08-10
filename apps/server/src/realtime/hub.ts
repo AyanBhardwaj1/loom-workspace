@@ -4,7 +4,8 @@ import type { AgentOrchestrator } from '../agent/orchestrator'
 import type { DbHandle } from '../db/client'
 import type { ProjectService } from '../projects/service'
 import type { SessionService } from '../sessions/service'
-import { projectTopic, sessionTopic, type EventBus } from './bus'
+import type { NotificationService } from '../notifications/service'
+import { projectTopic, sessionTopic, userTopic, type EventBus } from './bus'
 
 type UserRow = typeof import('../db/schema.sqlite').users.$inferSelect
 
@@ -23,6 +24,8 @@ interface ConnState {
   viewingProject: string | null
   /** F5: the event this viewer has in sight (ephemeral read position) */
   readingEventId: string | null
+  /** F9/F13: unsubscribe from this user's targeted-message topic */
+  userUnsub: (() => void) | null
   /** serializes message handling — a quick sub/unsub must not race itself */
   chain: Promise<void>
 }
@@ -41,6 +44,9 @@ export class Hub {
    * (suggestion resolution) across a driver's multiple connections */
   private sessionLocks = new Map<string, Promise<unknown>>()
 
+  /** F9 — one pending wheel-offer per session: sessionId → {from, toUserId, at} */
+  private pendingHandoffs = new Map<string, { fromUserId: string; toUserId: string; at: number }>()
+
   constructor(
     private deps: {
       dbh: DbHandle
@@ -48,6 +54,7 @@ export class Hub {
       sessions: SessionService
       projects: ProjectService
       orchestrator: AgentOrchestrator
+      notifications: NotificationService
     },
   ) {}
 
@@ -61,9 +68,13 @@ export class Hub {
       viewing: null,
       viewingProject: null,
       readingEventId: null,
+      userUnsub: null,
       chain: Promise.resolve(),
     }
     this.conns.add(conn)
+    // F9/F13 — targeted messages (handoff prompts, notifications) reach every
+    // connection this user has open
+    conn.userUnsub = this.deps.bus.subscribe(userTopic(user.id), (m) => this.send(conn, m as ServerMessage))
     socket.on('message', (data) => {
       const raw = String(data)
       conn.chain = conn.chain.then(() => this.onMessage(conn, raw)).catch(() => {})
@@ -172,6 +183,81 @@ export class Hub {
         if (conn.readingEventId === msg.eventId) return
         conn.readingEventId = msg.eventId
         if (conn.viewingProject) this.broadcastPresence(conn.viewingProject)
+        return
+      }
+      case 'annotate': {
+        // F8 — any project member pins a reaction/comment to an event
+        const session = await sessions.getSession(msg.sessionId)
+        if (!session) return this.sendError(conn, 'not_found', 'Session not found')
+        if (!(await projects.isMember(session.projectId, conn.user.id))) {
+          return this.sendError(conn, 'forbidden', 'You are not a member of this project')
+        }
+        await sessions.appendEvent(msg.sessionId, 'annotation', {
+          targetEventId: msg.targetEventId,
+          authorUserId: conn.user.id,
+          authorName: conn.user.name,
+          authorColor: conn.user.avatarColor,
+          kind: msg.kind,
+          body: msg.body,
+        })
+        if (session.driverUserId !== conn.user.id) {
+          await this.deps.notifications.create({
+            userId: session.driverUserId,
+            kind: 'annotation',
+            text:
+              msg.kind === 'comment'
+                ? `${conn.user.name} commented in "${session.title}"`
+                : `${conn.user.name} reacted in "${session.title}"`,
+            projectId: session.projectId,
+            sessionId: session.id,
+          })
+        }
+        return
+      }
+      case 'handoff_offer': {
+        // F9 — only the current driver can offer; target must be a member
+        const session = await sessions.getSession(msg.sessionId)
+        if (!session) return this.sendError(conn, 'not_found', 'Session not found')
+        if (session.driverUserId !== conn.user.id) {
+          return this.sendError(conn, 'forbidden', 'Only the driver can pass the wheel')
+        }
+        if (session.status === 'ended') return this.sendError(conn, 'rejected', 'This session has ended')
+        if (msg.toUserId === conn.user.id) return this.sendError(conn, 'rejected', 'You are already driving')
+        if (!(await projects.isMember(session.projectId, msg.toUserId))) {
+          return this.sendError(conn, 'forbidden', 'They are not a member of this project')
+        }
+        this.pendingHandoffs.set(msg.sessionId, { fromUserId: conn.user.id, toUserId: msg.toUserId, at: Date.now() })
+        this.deps.bus.publish(userTopic(msg.toUserId), {
+          t: 'handoff_request',
+          sessionId: session.id,
+          sessionTitle: session.title,
+          fromName: conn.user.name,
+        } satisfies ServerMessage)
+        await this.deps.notifications.create({
+          userId: msg.toUserId,
+          kind: 'handoff',
+          text: `${conn.user.name} offered you the wheel in "${session.title}"`,
+          projectId: session.projectId,
+          sessionId: session.id,
+        })
+        return
+      }
+      case 'handoff_response': {
+        // F9 — atomic swap, serialized per session; stale/duplicate accepts lose
+        await this.withSessionLock(msg.sessionId, async () => {
+          const pending = this.pendingHandoffs.get(msg.sessionId)
+          if (!pending || pending.toUserId !== conn.user.id || Date.now() - pending.at > 120_000) {
+            if (msg.accept) this.sendError(conn, 'rejected', 'That offer is no longer open')
+            return
+          }
+          this.pendingHandoffs.delete(msg.sessionId)
+          if (!msg.accept) return
+          if (this.deps.orchestrator.isBusy(msg.sessionId)) {
+            return this.sendError(conn, 'rejected', 'The agent is mid-turn — try again when it settles')
+          }
+          const ok = await sessions.transferDriver(msg.sessionId, pending.fromUserId, conn.user)
+          if (!ok) this.sendError(conn, 'rejected', 'The wheel already changed hands')
+        })
         return
       }
       case 'sub_project': {
@@ -293,6 +379,8 @@ export class Hub {
   private cleanup(conn: ConnState): void {
     if (!this.conns.has(conn)) return
     this.conns.delete(conn)
+    conn.userUnsub?.()
+    conn.userUnsub = null
     for (const unsub of conn.sessionSubs.values()) unsub()
     for (const unsub of conn.projectSubs.values()) unsub()
     const projectIds = new Set([...conn.projectSubs.keys(), ...conn.sessionProjects.values()])

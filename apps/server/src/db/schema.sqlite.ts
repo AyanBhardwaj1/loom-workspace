@@ -94,6 +94,8 @@ export const sessions = sqliteTable(
     lastEventAt: text('last_event_at'),
     /** F7: JSON SessionDigest, set when the session ends */
     digest: text('digest'),
+    /** F11: random share token; null = not shared (revoked) */
+    shareToken: text('share_token'),
     createdAt: text('created_at').notNull(),
   },
   (t) => ({
@@ -145,6 +147,25 @@ export const changes = sqliteTable(
     createdAt: text('created_at').notNull(),
   },
   (t) => ({ projectIdx: index('changes_project_idx').on(t.projectId, t.createdAt) }),
+)
+
+
+/** F13 — per-user notifications (forked your session, merged, annotation, handoff). */
+export const notifications = sqliteTable(
+  'notifications',
+  {
+    id: text('id').primaryKey(),
+    userId: text('user_id')
+      .notNull()
+      .references(() => users.id),
+    kind: text('kind').notNull(), // 'fork' | 'merge' | 'annotation' | 'handoff'
+    text: text('text').notNull(),
+    projectId: text('project_id'),
+    sessionId: text('session_id'),
+    readAt: text('read_at'),
+    createdAt: text('created_at').notNull(),
+  },
+  (t) => ({ userIdx: index('notifications_user_idx').on(t.userId, t.createdAt) }),
 )
 
 /** Tiny key-value store for runtime app settings (e.g. the AI provider key). */

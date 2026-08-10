@@ -5,6 +5,7 @@ import { createDb, type DbHandle } from './db/client'
 import type { ServerConfig } from './env'
 import { GhostCollaborator } from './ghost/ghost'
 import { MergeService } from './git/mergeService'
+import { NotificationService } from './notifications/service'
 import { ProjectService } from './projects/service'
 import { InProcessEventBus, type EventBus } from './realtime/bus'
 import { Hub } from './realtime/hub'
@@ -21,6 +22,7 @@ export interface Services {
   merge: MergeService
   ghost: GhostCollaborator
   hub: Hub
+  notifications: NotificationService
   runtime: AgentRuntime
   close(): Promise<void>
 }
@@ -39,7 +41,8 @@ export async function createServices(
   const orchestrator = new AgentOrchestrator({ dbh, config, sessions, projects, runtime })
   const merge = new MergeService({ dbh, projects, sessions, runtime })
   const ghost = new GhostCollaborator({ dbh, projects, sessions, orchestrator })
-  const hub = new Hub({ dbh, bus, sessions, projects, orchestrator })
+  const notifications = new NotificationService(dbh, bus)
+  const hub = new Hub({ dbh, bus, sessions, projects, orchestrator, notifications })
 
   return {
     config,
@@ -52,6 +55,7 @@ export async function createServices(
     merge,
     ghost,
     hub,
+    notifications,
     runtime,
     close: async () => {
       await dbh.close()

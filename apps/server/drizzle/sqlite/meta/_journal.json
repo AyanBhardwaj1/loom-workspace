@@ -22,6 +22,13 @@
       "when": 1786331698186,
       "tag": "0002_conscious_rhino",
       "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "6",
+      "when": 1786332579930,
+      "tag": "0003_glossy_warbird",
+      "breakpoints": true
     }
   ]
 }

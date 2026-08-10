@@ -60,6 +60,10 @@ export const commitPayload = z.object({
 export const statusPayload = z.object({
   status: agentActivityStatusSchema,
   note: z.string().optional(),
+  /** F9 — set when this status records a driver handoff */
+  newDriverUserId: z.string().optional(),
+  newDriverName: z.string().optional(),
+  newDriverColor: z.string().optional(),
 })
 export const forkMarkerPayload = z.object({
   childSessionId: z.string(),
@@ -86,6 +90,16 @@ export const usagePayload = z.object({
   costUsd: z.number().nonnegative(),
   model: z.string().nullable(),
   provider: z.string(),
+})
+/** F8 — a spectator's reaction or comment pinned to an earlier event. */
+export const annotationPayload = z.object({
+  targetEventId: z.string(),
+  authorUserId: z.string(),
+  authorName: z.string(),
+  authorColor: z.string(),
+  kind: z.enum(['reaction', 'comment']),
+  /** reaction name ('up' | 'spark' | 'question' | 'flag') or the comment text */
+  body: z.string().min(1).max(1000),
 })
 
 // ---------------------------------------------------------------------------
@@ -115,6 +129,7 @@ export const sessionEventSchema = z.discriminatedUnion('type', [
   z.object({ ...base, type: z.literal('suggestion'), payload: suggestionPayload }),
   z.object({ ...base, type: z.literal('suggestion_decision'), payload: suggestionDecisionPayload }),
   z.object({ ...base, type: z.literal('usage'), payload: usagePayload }),
+  z.object({ ...base, type: z.literal('annotation'), payload: annotationPayload }),
 ])
 
 export type SessionEvent = z.infer<typeof sessionEventSchema>
@@ -136,6 +151,7 @@ export const eventPayloadSchemas = {
   suggestion: suggestionPayload,
   suggestion_decision: suggestionDecisionPayload,
   usage: usagePayload,
+  annotation: annotationPayload,
 } as const
 
 /** Event types that are persisted to the DB (everything except assistant_delta). */
@@ -151,6 +167,7 @@ export const PERSISTED_EVENT_TYPES: SessionEventType[] = [
   'suggestion',
   'suggestion_decision',
   'usage',
+  'annotation',
 ]
 
 /** A short human line describing an event, for dashboard gists and activity feeds. */
@@ -188,6 +205,10 @@ export function eventGist(event: SessionEvent): string {
       return `suggestion ${event.payload.decision}`
     case 'usage':
       return `used ${event.payload.inputTokens + event.payload.outputTokens} tokens`
+    case 'annotation':
+      return event.payload.kind === 'comment'
+        ? `${event.payload.authorName} commented`
+        : `${event.payload.authorName} reacted`
   }
 }
 

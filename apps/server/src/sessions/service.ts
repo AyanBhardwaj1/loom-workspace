@@ -1,3 +1,4 @@
+import { randomBytes } from 'node:crypto'
 import path from 'node:path'
 import { and, asc, desc, eq, gt, inArray, ne, sql } from 'drizzle-orm'
 import { ulid } from 'ulid'
@@ -249,6 +250,7 @@ export class SessionService {
       lastEventAt: now,
       createdAt: now,
       digest: null,
+      shareToken: null,
     }
     await db.insert(t.sessions).values(session)
 
@@ -366,6 +368,7 @@ export class SessionService {
       lastEventAt: now,
       createdAt: now,
       digest: null,
+      shareToken: null,
     }
     await db.insert(t.sessions).values(session)
 
@@ -503,6 +506,64 @@ export class SessionService {
     const last = events[events.length - 1]!
     const durationMs = Math.max(0, new Date(last.createdAt).getTime() - new Date(createdAt).getTime())
     return { title, bullets, files: [...files], commitCount: commits.length, durationMs }
+  }
+
+  /** F11 — mint (or return) the session's share token. */
+  async setShareToken(sessionId: string): Promise<string> {
+    const { db, t } = this.dbh
+    const token = randomBytes(20).toString('hex')
+    await db.update(t.sessions).set({ shareToken: token }).where(eq(t.sessions.id, sessionId))
+    return token
+  }
+
+  async clearShareToken(sessionId: string): Promise<void> {
+    const { db, t } = this.dbh
+    await db.update(t.sessions).set({ shareToken: null }).where(eq(t.sessions.id, sessionId))
+  }
+
+  async getSessionByBranch(projectId: string, branchName: string): Promise<SessionRow | null> {
+    const { db, t } = this.dbh
+    const rows = await db
+      .select()
+      .from(t.sessions)
+      .where(and(eq(t.sessions.projectId, projectId), eq(t.sessions.branchName, branchName)))
+    return rows[0] ?? null
+  }
+
+  async getSessionByShareToken(token: string): Promise<SessionRow | null> {
+    const { db, t } = this.dbh
+    const rows = await db.select().from(t.sessions).where(eq(t.sessions.shareToken, token))
+    return rows[0] ?? null
+  }
+
+  /**
+   * F9 — atomic driver handoff: the swap only lands if `fromUserId` is still
+   * the driver and the session is not ended (single UPDATE with those
+   * conditions). The status event records the seam for every viewer.
+   */
+  async transferDriver(sessionId: string, fromUserId: string, to: UserRow): Promise<boolean> {
+    const { db, t } = this.dbh
+    const res = await db
+      .update(t.sessions)
+      .set({ driverUserId: to.id })
+      .where(and(eq(t.sessions.id, sessionId), eq(t.sessions.driverUserId, fromUserId), ne(t.sessions.status, 'ended')))
+      .returning({ id: t.sessions.id })
+    if (res.length === 0) return false
+    await this.appendEvent(sessionId, 'status', {
+      status: 'idle',
+      note: `${to.name} is now driving`,
+      newDriverUserId: to.id,
+      newDriverName: to.name,
+      newDriverColor: to.avatarColor,
+    })
+    const session = await this.getSession(sessionId)
+    if (session) {
+      this.publishProjectUpdate(session.projectId, {
+        kind: 'session_started',
+        session: await this.toSummary(session),
+      })
+    }
+    return true
   }
 
   /**
