@@ -9,11 +9,13 @@
     "seed": "tsx src/seed.ts",
     "test": "vitest run",
     "check": "tsc --noEmit",
-    "db:generate": "drizzle-kit generate --config drizzle.config.sqlite.ts && drizzle-kit generate --config drizzle.config.pg.ts"
+    "db:generate": "drizzle-kit generate --config drizzle.config.sqlite.ts && drizzle-kit generate --config drizzle.config.pg.ts",
+    "gc": "tsx src/scripts/gc.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.39.0",
     "@fastify/cookie": "^9.4.0",
+    "@fastify/rate-limit": "9.1.0",
     "@fastify/static": "^7.0.4",
     "@loom/shared": "workspace:*",
     "bcryptjs": "^2.4.3",
@@ -22,7 +24,9 @@
     "drizzle-orm": "^0.36.4",
     "execa": "^9.5.2",
     "fastify": "^4.29.0",
+    "ioredis": "5.4.1",
     "pg": "^8.13.1",
+    "pino": "9.5.0",
     "tsx": "^4.19.2",
     "ulid": "^2.3.0",
     "ws": "^8.18.0",

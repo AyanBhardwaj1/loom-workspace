@@ -4,6 +4,7 @@ import { useQuery } from '@tanstack/react-query'
 import { clsx } from 'clsx'
 import type { BranchInfo, ChangeSummary, MergeResult } from '@loom/shared'
 import { UnifiedDiffView } from '../components/EventRow'
+import { PaneBoundary } from '../components/PaneBoundary'
 import { PreviewPane } from '../components/PreviewPane'
 import { Modal } from '../components/overlay'
 import { Avatar, Button, CardSkeleton, EmptyState, MonoChip, SegmentedControl, Spinner, cn } from '../components/primitives'
@@ -96,7 +97,9 @@ export function HistoryPage() {
       {/* right — detail */}
       <div className="flex min-w-0 flex-1 flex-col">
         {selected ? (
-          <ChangeDetail projectId={projectId} change={selected} lens={lens} onLensChange={setLens} />
+          <PaneBoundary label="change detail">
+            <ChangeDetail projectId={projectId} change={selected} lens={lens} onLensChange={setLens} />
+          </PaneBoundary>
         ) : (
           <div className="flex flex-1 items-center justify-center">
             <EmptyState title="Select a change" hint="Pick any node on the timeline to read it — in plain English or in git terms." />

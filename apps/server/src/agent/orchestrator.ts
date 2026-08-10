@@ -3,7 +3,11 @@ import type { DbHandle } from '../db/client'
 import type { ServerConfig } from '../env'
 import type { ProjectService } from '../projects/service'
 import type { SessionService } from '../sessions/service'
+import pino from 'pino'
 import { agentSystemPrompt, countAssistantTurns, foldTranscript } from './context'
+
+/** C7 — agent-turn telemetry: start/end, duration, tool timings. */
+const turnLog = pino({ name: 'agent', level: process.env.NODE_ENV === 'test' ? 'silent' : 'info' })
 import { estimateCostUsd } from './pricing'
 import type { AgentRuntime } from './runtime'
 import { ToolExecutor } from './tools'
@@ -114,6 +118,8 @@ export class AgentOrchestrator {
     suggestedBy?: { userId: string; name: string },
   ): Promise<void> {
     const { sessions } = this.deps
+    const startedAt = Date.now()
+    turnLog.info({ sessionId: session.id, driver: user.name }, 'turn start')
     let outcome: { status: 'idle' | 'error'; note?: string } = { status: 'idle' }
     try {
       outcome = await this.runTurn(session, user, text, aborter.signal, suggestedBy)
@@ -130,6 +136,10 @@ export class AgentOrchestrator {
       this.aborters.delete(session.id)
     }
 
+    turnLog.info(
+      { sessionId: session.id, ms: Date.now() - startedAt, outcome: outcome.status, aborted: aborter.signal.aborted },
+      'turn end',
+    )
     await sessions.setSessionRowStatus(session.id, 'idle')
     const terminal: EventPayloadOf<'status'> = aborter.signal.aborted
       ? { status: 'idle', note: 'Stopped by driver' }
@@ -196,7 +206,9 @@ export class AgentOrchestrator {
       turnIndex: assistantTurns,
       signal,
       executeTool: async (name, input) => {
+        const toolStart = Date.now()
         const execution = await tools.execute(name, input)
+        turnLog.debug({ sessionId: session.id, tool: name, ms: Date.now() - toolStart, ok: execution.ok }, 'tool')
         await sessions.appendEvent(session.id, 'tool_result', {
           toolName: name,
           summary: execution.summary,

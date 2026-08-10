@@ -98,3 +98,29 @@ bus is behind an interface, so a Redis pub/sub adapter (plus sticky sessions
 or shared presence) is the path to multi-instance — it's a deliberate
 non-goal for now, and everything else (DB, git on a shared volume) is already
 multi-instance-shaped.
+
+## Scaling out (multi-instance)
+
+Set `REDIS_URL` and the event bus rides Redis pub/sub (`RedisEventBus`) — all
+instances see every session/project/user message, so spectating and
+notifications work across instances. Pair it with `DATABASE_URL` (Postgres);
+SQLite is single-writer and stays the single-instance default.
+
+Two caveats, by design:
+
+- **Presence is per-instance** — it derives from live sockets on each node.
+  Behind a sticky-session load balancer this is invisible; without stickiness
+  watcher counts under-report. Moving presence into Redis is the next step if
+  you need it.
+- **Worktrees are per-instance disk.** Keep a session's traffic on the node
+  that owns its worktree (sticky sessions again), or mount shared storage.
+
+## Housekeeping
+
+Ended sessions keep their branch forever, but their working copies are pruned:
+a daily job removes worktrees for sessions ended more than `LOOM_GC_DAYS`
+(default 14; `0` disables). Run it by hand with:
+
+```bash
+pnpm --filter @loom/server gc -- --dry-run
+```

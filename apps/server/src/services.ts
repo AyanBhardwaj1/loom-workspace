@@ -8,6 +8,7 @@ import { MergeService } from './git/mergeService'
 import { NotificationService } from './notifications/service'
 import { ProjectService } from './projects/service'
 import { InProcessEventBus, type EventBus } from './realtime/bus'
+import { RedisEventBus } from './realtime/redisBus'
 import { Hub } from './realtime/hub'
 import { SessionService } from './sessions/service'
 
@@ -32,7 +33,8 @@ export async function createServices(
   opts: { fastMock?: boolean } = {},
 ): Promise<Services> {
   const dbh = await createDb(config)
-  const bus = new InProcessEventBus()
+  // C10 — Redis-backed bus when REDIS_URL is set; in-process by default
+  const bus: EventBus = config.redisUrl ? new RedisEventBus(config.redisUrl) : new InProcessEventBus()
   const auth = new AuthService(dbh)
   const projects = new ProjectService(dbh, config)
   const sessions = new SessionService(dbh, bus, config)
@@ -58,6 +60,7 @@ export async function createServices(
     notifications,
     runtime,
     close: async () => {
+      if (bus instanceof RedisEventBus) await bus.close()
       await dbh.close()
     },
   }

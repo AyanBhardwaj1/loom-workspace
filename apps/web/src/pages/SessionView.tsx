@@ -9,6 +9,7 @@ import { formatCost, formatTokens, sumUsage } from '@loom/shared'
 import { AgentModeChip } from '../components/AiSettingsDialog'
 import { ChatLog } from '../components/ChatLog'
 import { Composer } from '../components/Composer'
+import { PaneBoundary } from '../components/PaneBoundary'
 import { PreviewPane } from '../components/PreviewPane'
 import { SpectatorSidebar } from '../components/SpectatorSidebar'
 import { Modal, Popover, PopoverContent, PopoverTrigger, Tooltip } from '../components/overlay'
@@ -196,7 +197,9 @@ export function SessionView() {
   }
 
   const spectatorPane = sessionId ? (
-    <SpectatorSidebar projectId={projectId} currentSessionId={sessionId} onClose={() => (isDesktop ? setSidebarOpen(false) : setDrawerOpen(false))} />
+    <PaneBoundary label="spectate panel">
+      <SpectatorSidebar projectId={projectId} currentSessionId={sessionId} onClose={() => (isDesktop ? setSidebarOpen(false) : setDrawerOpen(false))} />
+    </PaneBoundary>
   ) : null
 
   return (
@@ -400,7 +403,9 @@ export function SessionView() {
               </button>
             </div>
           )}
+          <PaneBoundary label="event log">
           <ChatLog
+            testId="main-log"
             events={stream.events}
             streamingText={stream.streamingText}
             agentStatus={isEnded ? 'idle' : stream.agentStatus}
@@ -430,6 +435,7 @@ export function SessionView() {
                 : 'Nothing here yet.'
             }
           />
+          </PaneBoundary>
 
           {isEnded && meta.digest ? (
             <div className="border-t border-hairline px-6 py-4">

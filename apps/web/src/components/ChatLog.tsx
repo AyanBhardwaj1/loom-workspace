@@ -7,10 +7,14 @@ import { momentAgentAwakens, momentSessionStart } from '../lib/choreography'
 import { buildEvolutions } from '../lib/diff'
 import { wsClient } from '../lib/ws'
 import type { PendingMessage } from '../state/useSessionStream'
+import { lazy, Suspense } from 'react'
 import { EventRow } from './EventRow'
-import { EvolutionPlayer } from './EvolutionPlayer'
 import { Modal } from './overlay'
+
+// C12 — magic-move (and its shiki machinery) loads only when a player opens
+const EvolutionPlayer = lazy(() => import('./EvolutionPlayer').then((m) => ({ default: m.EvolutionPlayer })))
 import { toDisplayItems, type RowActions } from './eventStream'
+import { eventGist } from '@loom/shared'
 
 /**
  * The event log — every event sits on the thread. The thread is a real SVG
@@ -35,6 +39,7 @@ export function ChatLog({
   pending,
   onRetryPending,
   onDiscardPending,
+  testId,
 }: {
   events: SessionEvent[]
   streamingText: string
@@ -57,6 +62,8 @@ export function ChatLog({
   pending?: PendingMessage[]
   onRetryPending?: (localId: string) => void
   onDiscardPending?: (localId: string) => void
+  /** stable hook for tests to scope this specific log */
+  testId?: string
 }) {
   const containerRef = useRef<HTMLDivElement>(null)
   const contentRef = useRef<HTMLDivElement>(null)
@@ -186,6 +193,18 @@ export function ChatLog({
 
   const showThinking = busy && !streaming
 
+  // C8 — screen readers hear new activity at a calm cadence (≤1 per 4s)
+  const [announcement, setAnnouncement] = useState('')
+  const lastAnnounce = useRef(0)
+  useEffect(() => {
+    if (events.length === 0) return
+    const now = Date.now()
+    if (now - lastAnnounce.current < 4000) return
+    lastAnnounce.current = now
+    const last = events[events.length - 1]!
+    setAnnouncement(eventGist(last))
+  }, [events])
+
   /**
    * C1 — virtualization: only visible rows render; dynamic measurement keeps
    * variable-height rows honest; generous overscan so the thread and its
@@ -203,7 +222,10 @@ export function ChatLog({
   const virtualItems = virtualizer.getVirtualItems()
 
   return (
-    <div className="relative flex min-h-0 flex-1 flex-col">
+    <div className="relative flex min-h-0 flex-1 flex-col" data-testid={testId}>
+      <span aria-live="polite" role="status" className="sr-only">
+        {announcement}
+      </span>
       <div ref={containerRef} onScroll={onScroll} className={clsx('min-h-0 flex-1 overflow-y-auto', compact ? 'px-3 py-2' : 'px-6 py-4')}>
         <div ref={contentRef} className={clsx('relative mx-auto', !compact && 'max-w-[760px]')}>
           {items.length === 0 && !streaming && !showThinking && (
@@ -327,7 +349,15 @@ export function ChatLog({
       {evo && (
         <Modal open onClose={() => setEvo(null)} title={`Evolution — ${evo.path}`} width={780}>
           <div className="-m-1 overflow-hidden rounded-lg border border-hairline">
-            <EvolutionPlayer path={evo.path} contents={evo.steps} onClose={() => setEvo(null)} />
+            <Suspense
+              fallback={
+                <div className="flex justify-center py-10">
+                  <span className="inline-block h-4 w-4 animate-spin rounded-full border border-hairline-strong border-t-lav-500" style={{ animationDuration: '0.8s' }} />
+                </div>
+              }
+            >
+              <EvolutionPlayer path={evo.path} contents={evo.steps} onClose={() => setEvo(null)} />
+            </Suspense>
           </div>
         </Modal>
       )}
