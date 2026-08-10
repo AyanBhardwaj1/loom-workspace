@@ -24,6 +24,19 @@ export function reducedMotion(): boolean {
   return window.matchMedia('(prefers-reduced-motion: reduce)').matches
 }
 
+/** Hidden tabs throttle rAF — decorative moments simply skip. */
+function skipDecoration(): boolean {
+  return reducedMotion() || document.visibilityState === 'hidden'
+}
+
+/**
+ * Awaited moments must never gate navigation on the GSAP ticker (a throttled
+ * tab can freeze it) — race every awaited timeline against a hard deadline.
+ */
+function withDeadline(p: Promise<void>, ms: number): Promise<void> {
+  return Promise.race([p, new Promise<void>((r) => setTimeout(r, ms))])
+}
+
 /* ----------------------------------------------------------------------------
  * Flip helper — tool chips / diff cards / sidebar expand-collapse.
  * Capture → caller mutates state → animate the size/position difference.
@@ -76,7 +89,7 @@ export function momentComposerBreathe(ringEl: HTMLElement): void {
  * The sustained current is CSS (.thread-current); this is the herald.
  * ------------------------------------------------------------------------- */
 export function momentAgentAwakens(container: HTMLElement, travelPx: number): void {
-  if (reducedMotion()) return
+  if (skipDecoration()) return
   const pulse = document.createElement('span')
   pulse.setAttribute('aria-hidden', 'true')
   Object.assign(pulse.style, {
@@ -99,14 +112,13 @@ export function momentAgentAwakens(container: HTMLElement, travelPx: number): vo
 }
 
 /* ----------------------------------------------------------------------------
- * M4 — Commit settle: the node scales onto the thread, a 1px ripple ring
- * expands and fades, content staggers up.
+ * M4 — Commit settle: the node scales onto the thread and a ripple ring
+ * expands. DECORATION ONLY — the content rows enter via CSS (CommitRow
+ * staggers .animate-rise with animation-delay), so a frozen ticker can
+ * never leave the commit invisible.
  * ------------------------------------------------------------------------- */
-export function momentCommitSettle(node: HTMLElement, ripple: HTMLElement, rows: HTMLElement[]): void {
-  if (reducedMotion()) {
-    gsap.fromTo([node, ...rows], { opacity: 0 }, { opacity: 1, duration: 0.18 })
-    return
-  }
+export function momentCommitSettle(node: HTMLElement, ripple: HTMLElement): void {
+  if (skipDecoration()) return
   const tl = gsap.timeline()
   tl.fromTo(node, { scale: 0.6, opacity: 0 }, { scale: 1, opacity: 1, duration: 0.32, ease: 'loom-spring' })
   tl.fromTo(
@@ -114,12 +126,6 @@ export function momentCommitSettle(node: HTMLElement, ripple: HTMLElement, rows:
     { scale: 0.4, opacity: 0.5 },
     { scale: 2.2, opacity: 0, duration: 0.3, ease: 'loom-standard' },
     0.05,
-  )
-  tl.fromTo(
-    rows,
-    { opacity: 0, y: 4 },
-    { opacity: 1, y: 0, duration: 0.22, ease: 'loom-out', stagger: 0.08 },
-    0.08,
   )
 }
 
@@ -130,7 +136,11 @@ export function momentCommitSettle(node: HTMLElement, ripple: HTMLElement, rows:
  * under reduced motion) so navigation can await it.
  * ------------------------------------------------------------------------- */
 export function momentFork(anchorEl: HTMLElement, avatarColor: string): Promise<void> {
-  if (reducedMotion()) return Promise.resolve()
+  if (skipDecoration()) return Promise.resolve()
+  return withDeadline(momentForkInner(anchorEl, avatarColor), 900)
+}
+
+function momentForkInner(anchorEl: HTMLElement, avatarColor: string): Promise<void> {
   return new Promise((resolve) => {
     const rect = anchorEl.getBoundingClientRect()
     const svgNS = 'http://www.w3.org/2000/svg'
@@ -164,6 +174,8 @@ export function momentFork(anchorEl: HTMLElement, avatarColor: string): Promise<
     svg.appendChild(rider)
 
     document.body.appendChild(svg)
+    // backstop: never leak the overlay if the ticker stalls
+    setTimeout(() => svg.remove(), 1200)
     gsap
       .timeline({
         onComplete: () => {
@@ -191,6 +203,11 @@ export function momentFork(anchorEl: HTMLElement, avatarColor: string): Promise<
  * timeline's SVG paths.
  * ------------------------------------------------------------------------- */
 export function momentMergeJoin(branchPath: SVGPathElement, joinedD: string, bloomAt: { x: number; y: number }): Promise<void> {
+  if (document.visibilityState === 'hidden') return Promise.resolve()
+  return withDeadline(momentMergeJoinInner(branchPath, joinedD, bloomAt), 1300)
+}
+
+function momentMergeJoinInner(branchPath: SVGPathElement, joinedD: string, bloomAt: { x: number; y: number }): Promise<void> {
   if (reducedMotion()) {
     return new Promise((resolve) => {
       gsap.to(branchPath, {
@@ -215,6 +232,8 @@ export function momentMergeJoin(branchPath: SVGPathElement, joinedD: string, blo
       bloom.setAttribute('fill', 'var(--lav-500)')
       bloom.setAttribute('opacity', '0')
       svg.appendChild(bloom)
+      const b = bloom
+      setTimeout(() => b.remove(), 1400)
     }
     const tl = gsap.timeline({
       onComplete: () => {

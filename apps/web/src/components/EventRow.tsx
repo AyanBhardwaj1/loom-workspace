@@ -568,15 +568,18 @@ function CommitRow({ event, compact, animate }: { event: SessionEventOf<'commit'
   const [copied, setCopied] = useState(false)
   const nodeRef = useRef<HTMLSpanElement>(null)
   const rippleRef = useRef<HTMLSpanElement>(null)
-  const contentRef = useRef<HTMLDivElement>(null)
   const played = useRef(false)
 
   useEffect(() => {
     if (!animate || played.current || compact) return
     played.current = true
-    const rows = contentRef.current ? (Array.from(contentRef.current.children) as HTMLElement[]) : []
-    if (nodeRef.current && rippleRef.current) momentCommitSettle(nodeRef.current, rippleRef.current, rows)
+    if (nodeRef.current && rippleRef.current) momentCommitSettle(nodeRef.current, rippleRef.current)
   }, [animate, compact])
+
+  // content enters via CSS so it can never be stranded invisible (M4 is
+  // decoration-only); ~80ms stagger per spec
+  const rise = (i: number) =>
+    animate && !compact ? { className: 'animate-rise', style: { animationDelay: `${80 + i * 80}ms` } } : { className: undefined, style: undefined }
 
   const copySha = async () => {
     try {
@@ -609,10 +612,14 @@ function CommitRow({ event, compact, animate }: { event: SessionEventOf<'commit'
         aria-hidden
         className="pointer-events-none absolute -left-[24.5px] top-[1.05rem] h-[17px] w-[17px] rounded-full border border-lav-border opacity-0"
       />
-      <div ref={contentRef} className="max-w-[70ch] rounded-lg border border-hairline bg-surface p-4">
-        <div className="text-body leading-relaxed text-primary">{p.plainExplanation}</div>
-        <div className="mt-1 font-mono text-code-sm text-secondary">{p.technicalSummary}</div>
-        <div className="mt-2.5 flex items-center gap-2">
+      <div className="max-w-[70ch] rounded-lg border border-hairline bg-surface p-4">
+        <div {...rise(0)}>
+          <div className="text-body leading-relaxed text-primary">{p.plainExplanation}</div>
+        </div>
+        <div {...rise(1)}>
+          <div className="mt-1 font-mono text-code-sm text-secondary">{p.technicalSummary}</div>
+        </div>
+        <div className={clsx('mt-2.5 flex items-center gap-2', rise(2).className)} style={rise(2).style}>
           <button
             onClick={() => void copySha()}
             title="Copy the full commit SHA"
