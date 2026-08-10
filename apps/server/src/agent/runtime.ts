@@ -23,6 +23,8 @@ interface StoredAiSettings {
   apiKey: string
   model: string
   baseUrl?: string
+  /** openrouter only: effort level / 'on' / 'off'; null = provider default */
+  reasoning?: string | null
 }
 
 /**
@@ -40,6 +42,7 @@ export class AgentRuntime {
   model: string | null = null
   source: AiSettingsDto['source'] = 'none'
   baseUrl: string | null = null
+  reasoning: AiSettingsDto['reasoning'] = null
   private maskedKey: string | null = null
 
   constructor(
@@ -68,6 +71,7 @@ export class AgentRuntime {
       maskedKey: this.maskedKey,
       source: this.source,
       baseUrl: this.baseUrl,
+      reasoning: this.reasoning,
     }
   }
 
@@ -88,6 +92,7 @@ export class AgentRuntime {
             apiKey: update.apiKey.trim(),
             model: update.model?.trim() || DEFAULT_OPENROUTER_MODEL,
             baseUrl: update.baseUrl?.trim() || OPENROUTER_BASE_URL,
+            reasoning: update.reasoning ?? null,
           }
 
     const check =
@@ -124,7 +129,8 @@ export class AgentRuntime {
       this.baseUrl = null
     } else {
       const opts = { apiKey: stored.apiKey, model: stored.model, baseUrl: stored.baseUrl }
-      this.provider = new OpenAICompatProvider(opts)
+      // reasoning applies to agent turns only — summarizer/resolver stay fast
+      this.provider = new OpenAICompatProvider({ ...opts, reasoning: stored.reasoning ?? null })
       this.summarizer = new OpenAICompatSummarizer(opts)
       this.conflictResolver = makeOpenAICompatConflictResolver(opts)
       this.baseUrl = stored.baseUrl ?? OPENROUTER_BASE_URL
@@ -132,6 +138,7 @@ export class AgentRuntime {
     this.mode = stored.provider
     this.model = stored.model
     this.source = 'runtime'
+    this.reasoning = stored.provider === 'openrouter' ? ((stored.reasoning as AiSettingsDto['reasoning']) ?? null) : null
     this.maskedKey = maskKey(stored.apiKey)
   }
 
@@ -151,6 +158,7 @@ export class AgentRuntime {
       this.source = 'env'
       this.maskedKey = maskKey(this.config.anthropicApiKey)
       this.baseUrl = null
+      this.reasoning = null
     } else {
       this.provider = new MockAgentProvider({ fast: this.opts.fastMock })
       this.summarizer = new TemplateSummarizer()
@@ -160,6 +168,7 @@ export class AgentRuntime {
       this.source = 'none'
       this.maskedKey = null
       this.baseUrl = null
+      this.reasoning = null
     }
   }
 

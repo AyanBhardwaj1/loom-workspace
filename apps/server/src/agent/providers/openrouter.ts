@@ -11,6 +11,20 @@ interface CompatOpts {
   model: string
   /** OpenRouter by default; any OpenAI-compatible endpoint works (Ollama, vLLM…). */
   baseUrl?: string
+  /** Reasoning setting for agent turns: an effort level, 'on'/'off', or null. */
+  reasoning?: string | null
+}
+
+/**
+ * OpenRouter's unified `reasoning` request param. Effort levels pass through
+ * as-is (the UI only offers ones the model advertises); 'on'/'off' cover
+ * models that expose reasoning as a toggle with no effort ladder.
+ */
+export function reasoningParam(setting: string | null | undefined): Record<string, unknown> {
+  if (!setting) return {}
+  if (setting === 'on') return { reasoning: { enabled: true } }
+  if (setting === 'off') return { reasoning: { enabled: false } }
+  return { reasoning: { effort: setting } }
 }
 
 interface StreamedToolCall {
@@ -73,6 +87,8 @@ export class OpenAICompatProvider implements AgentProvider {
             tools,
             stream: true,
             stream_options: { include_usage: true },
+            // agent turns only — summaries and merge resolution stay cheap
+            ...reasoningParam(this.opts.reasoning),
           }),
           signal: ctx.signal,
         })

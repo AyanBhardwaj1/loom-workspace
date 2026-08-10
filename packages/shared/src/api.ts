@@ -112,7 +112,15 @@ export interface AiSettingsDto {
   source: 'runtime' | 'env' | 'none'
   /** For openrouter/compatible providers: the API base URL in use. */
   baseUrl: string | null
+  /** Reasoning setting for the active model (null = provider default). */
+  reasoning: ReasoningSetting | null
 }
+
+/** Effort ladder OpenRouter models advertise, ordered weakest → strongest. */
+export const REASONING_EFFORTS = ['low', 'medium', 'high', 'xhigh', 'max'] as const
+export type ReasoningEffort = (typeof REASONING_EFFORTS)[number]
+/** 'on'/'off' cover reasoning models that only expose a toggle, no ladder. */
+export type ReasoningSetting = ReasoningEffort | 'on' | 'off'
 
 export interface AiSettingsUpdate {
   provider: AiProviderKind
@@ -120,4 +128,24 @@ export interface AiSettingsUpdate {
   model?: string
   /** Any OpenAI-compatible endpoint (OpenRouter default; Ollama, vLLM, LM Studio work too). */
   baseUrl?: string
+  /** null/undefined = provider default. Only meaningful for openrouter. */
+  reasoning?: ReasoningSetting | null
+}
+
+/** One OpenRouter catalog row, trimmed to what the model picker shows. */
+export interface OpenRouterModelDto {
+  id: string
+  name: string
+  contextLength: number | null
+  /** $ per million tokens; null = unknown, 0 = free. */
+  promptPrice: number | null
+  completionPrice: number | null
+  /** null = the model cannot reason at all. */
+  reasoning: {
+    /** true = the model always reasons (no off switch). */
+    mandatory: boolean
+    /** Efforts this model accepts, ordered low → max; [] = on/off toggle only. */
+    efforts: ReasoningEffort[]
+    defaultEffort: string | null
+  } | null
 }
