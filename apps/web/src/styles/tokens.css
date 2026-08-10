@@ -1,0 +1,83 @@
+/**
+ * Loom design tokens — the ONLY place raw color/size/motion values may live.
+ * (The one other sanctioned home for hex values is the shiki `loom-charcoal`
+ * theme in src/lib/highlighter.ts.) Everything else derives from these
+ * custom properties, mostly via the Tailwind theme mapping in tailwind.config.
+ *
+ * Rules (see DESIGN.md):
+ *  - hairlines are 1px, three alphas; nothing thicker anywhere
+ *  - lavender = liveness + primary action only; --lav-glow is the app's ONE glow
+ *  - text on lavender fills is dark (--text-on-accent)
+ *  - radii: 6 controls · 8 cards · 10 modals · 999 pills
+ */
+:root {
+  color-scheme: dark;
+
+  /* ---- canvas & surfaces (flat solids over the shader canvas) ---- */
+  --bg-canvas: #0b0b0e; /* CSS fallback + body bg behind the shader */
+  --bg-surface: #141417; /* cards, tiles, sidebar */
+  --bg-raised: #1a1a1e; /* bubbles, composer, hover fills, toasts */
+  --bg-overlay: #202024; /* modals, dropdowns, popovers, palette */
+  --bg-inset: #0b0b0d; /* code, diff bodies, key inputs */
+
+  /* ---- hairlines (1px only) ---- */
+  --hairline: rgba(255, 255, 255, 0.06);
+  --hairline-hover: rgba(255, 255, 255, 0.1);
+  --hairline-strong: rgba(255, 255, 255, 0.15);
+
+  /* ---- text ---- */
+  --text-primary: #ededf0;
+  --text-secondary: #a6a6af;
+  --text-tertiary: rgba(255, 255, 255, 0.42);
+  --text-disabled: rgba(255, 255, 255, 0.25);
+  --text-on-accent: #131316;
+  --text-on-identity: #0e0e10; /* avatar initials on founder colors */
+
+  /* ---- muted lavender (the signature) ---- */
+  --lav-300: #bdb2f9;
+  --lav-400: #afa4f6;
+  --lav-500: #9c8ff2;
+  --lav-600: #8a7be8;
+  --lav-fill: rgba(156, 143, 242, 0.1);
+  --lav-border: rgba(156, 143, 242, 0.32);
+  --lav-glow: rgba(156, 143, 242, 0.35);
+
+  /* ---- semantic, desaturated for charcoal ---- */
+  --ok: #4cc38a;
+  --ok-fill: rgba(76, 195, 138, 0.09);
+  --ok-border: rgba(76, 195, 138, 0.28);
+  --danger: #e5646b;
+  --danger-fill: rgba(229, 100, 107, 0.09);
+  --danger-border: rgba(229, 100, 107, 0.28);
+  --warn: #e0b45c;
+  --warn-fill: rgba(224, 180, 92, 0.09);
+  --warn-border: rgba(224, 180, 92, 0.28);
+
+  /* ---- overlay scrim ---- */
+  --scrim: rgba(11, 11, 14, 0.55);
+
+  /* ---- the thread ---- */
+  --thread-rest: rgba(255, 255, 255, 0.07);
+  --thread-hover: rgba(255, 255, 255, 0.14);
+  --thread-node: rgba(255, 255, 255, 0.2);
+  --thread-branch: rgba(255, 255, 255, 0.1);
+  --thread-branch-active: rgba(255, 255, 255, 0.2);
+
+  /* ---- motion ---- */
+  --t-micro: 120ms;
+  --t-fast: 180ms;
+  --t-enter: 240ms;
+  --t-moment: 560ms; /* representative; individual moments 420–700ms */
+  --ease-out: cubic-bezier(0.25, 1, 0.5, 1); /* loom-out: entrances */
+  --ease-standard: cubic-bezier(0.2, 0, 0, 1); /* loom-standard */
+  --ease-exit: cubic-bezier(0.4, 0, 1, 1);
+
+  /* ---- elevation (the only two shadows) ---- */
+  --shadow-modal: 0 8px 32px rgba(0, 0, 0, 0.45);
+  --shadow-dropdown: 0 4px 16px rgba(0, 0, 0, 0.35);
+  --glow-live: 0 0 0 1px var(--lav-border), 0 0 24px -12px var(--lav-glow);
+
+  /* ---- scrollbars / selection ---- */
+  --scroll-thumb: rgba(255, 255, 255, 0.15);
+  --scroll-thumb-hover: rgba(255, 255, 255, 0.25);
+}

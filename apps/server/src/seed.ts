@@ -19,11 +19,11 @@ async function seed(): Promise<void> {
   const auth = new AuthService(dbh)
 
   const founders = [
-    { name: 'Prithviraj', email: 'prithviraj@loom.dev', avatarColor: '#8b7cf6' },
-    { name: 'Ayan', email: 'ayan@loom.dev', avatarColor: '#f59e0b' },
-    { name: 'Sai', email: 'sai@loom.dev', avatarColor: '#10b981' },
-    { name: 'Ashwin', email: 'ashwin@loom.dev', avatarColor: '#38bdf8' },
-    { name: 'Aarush', email: 'aarush@loom.dev', avatarColor: '#ec4899' },
+    { name: 'Prithviraj', email: 'prithviraj@loom.dev', avatarColor: '#8FA8E8' },
+    { name: 'Ayan', email: 'ayan@loom.dev', avatarColor: '#9C8FF2' },
+    { name: 'Sai', email: 'sai@loom.dev', avatarColor: '#7FBF9E' },
+    { name: 'Ashwin', email: 'ashwin@loom.dev', avatarColor: '#D9A87C' },
+    { name: 'Aarush', email: 'aarush@loom.dev', avatarColor: '#C98FB8' },
   ]
 
   const password = 'loom-demo'

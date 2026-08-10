@@ -1,124 +1,128 @@
-/** @type {import('tailwindcss').Config} */
+/**
+ * @type {import('tailwindcss').Config}
+ *
+ * The theme is a thin mapping onto the custom properties in
+ * src/styles/tokens.css — utilities never carry raw values. If a value isn't
+ * a token, it doesn't belong in a className.
+ */
 export default {
   content: ['./index.html', './src/**/*.{ts,tsx}'],
   darkMode: 'class',
   theme: {
+    // full replacement (not extend) for the axes the system owns
+    colors: {
+      transparent: 'transparent',
+      current: 'currentColor',
+      canvas: 'var(--bg-canvas)',
+      surface: 'var(--bg-surface)',
+      raised: 'var(--bg-raised)',
+      overlay: 'var(--bg-overlay)',
+      inset: 'var(--bg-inset)',
+      primary: 'var(--text-primary)',
+      secondary: 'var(--text-secondary)',
+      tertiary: 'var(--text-tertiary)',
+      disabled: 'var(--text-disabled)',
+      'on-accent': 'var(--text-on-accent)',
+      lav: {
+        300: 'var(--lav-300)',
+        400: 'var(--lav-400)',
+        500: 'var(--lav-500)',
+        600: 'var(--lav-600)',
+        fill: 'var(--lav-fill)',
+        border: 'var(--lav-border)',
+      },
+      ok: { DEFAULT: 'var(--ok)', fill: 'var(--ok-fill)', border: 'var(--ok-border)' },
+      danger: { DEFAULT: 'var(--danger)', fill: 'var(--danger-fill)', border: 'var(--danger-border)' },
+      warn: { DEFAULT: 'var(--warn)', fill: 'var(--warn-fill)', border: 'var(--warn-border)' },
+      scrim: 'var(--scrim)',
+      hairline: {
+        DEFAULT: 'var(--hairline)',
+        hover: 'var(--hairline-hover)',
+        strong: 'var(--hairline-strong)',
+      },
+    },
+    borderRadius: {
+      none: '0',
+      sm: '4px', // kbd caps only
+      DEFAULT: '6px', // controls, chips, inputs, segments
+      lg: '8px', // cards, bubbles, composer, diff cards
+      xl: '10px', // modals + command palette only
+      full: '999px', // pills, avatars
+    },
+    boxShadow: {
+      none: 'none',
+      modal: 'var(--shadow-modal)',
+      dropdown: 'var(--shadow-dropdown)',
+      live: 'var(--glow-live)', // the app's single glow
+    },
+    zIndex: {
+      0: '0',
+      sticky: '10',
+      sidebar: '20',
+      dropdown: '30',
+      scrim: '40',
+      modal: '50',
+      toast: '60',
+    },
+    fontFamily: {
+      sans: ['Geist Variable', 'Geist Fallback', 'ui-sans-serif', 'system-ui', 'sans-serif'],
+      mono: ['Geist Mono Variable', 'Geist Mono Fallback', 'ui-monospace', 'SFMono-Regular', 'Menlo', 'monospace'],
+    },
+    fontSize: {
+      // role-named scale — size/leading/tracking travel together
+      micro: ['11px', { lineHeight: '16px', letterSpacing: '0.08em', fontWeight: '500' }],
+      small: ['12px', { lineHeight: '18px' }],
+      ui: ['13px', { lineHeight: '20px' }],
+      body: ['14px', { lineHeight: '23px' }],
+      h4: ['16px', { lineHeight: '24px', letterSpacing: '-0.01em', fontWeight: '500' }],
+      h3: ['18px', { lineHeight: '26px', letterSpacing: '-0.014em', fontWeight: '600' }],
+      h2: ['20px', { lineHeight: '28px', letterSpacing: '-0.016em', fontWeight: '600' }],
+      display: ['24px', { lineHeight: '32px', letterSpacing: '-0.02em', fontWeight: '600' }],
+      // data sizes (mono contexts)
+      'code-sm': ['12px', { lineHeight: '18px' }],
+      code: ['13px', { lineHeight: '20px' }],
+    },
     extend: {
-      colors: {
-        // one accent color across the whole product
-        accent: {
-          DEFAULT: '#8b7cf6',
-          soft: '#a99df8',
-          bright: '#b9aef8',
-          faint: 'rgba(139, 124, 246, 0.14)',
-        },
-        // semantic "thread" hues — each event type in the stream has a signature
-        thread: {
-          agent: '#8b7cf6', // narration — violet
-          tool: '#38d6e0', // tool activity — cyan
-          add: '#38e0a5', // additions — emerald
-          del: '#f26d6d', // deletions — red
-          commit: '#f4c95d', // commits — gold
-          suggest: '#f0a952', // suggestions — amber
-          fork: '#e879f9', // forks — magenta
-        },
-        ink: {
-          950: '#08080d',
-          900: '#0d0d14',
-          850: '#12121b',
-          800: '#181824',
-          700: '#22222f',
-          600: '#2c2c3d',
-          500: '#3a3a52',
-          400: '#585874',
-          300: '#8888a3',
-          200: '#b8b8cc',
-          100: '#e6e6f0',
-        },
+      spacing: {
+        // 4px grid comes with Tailwind; nothing extra needed
       },
-      fontFamily: {
-        sans: ['Inter', 'ui-sans-serif', 'system-ui', '-apple-system', 'Segoe UI', 'sans-serif'],
-        mono: ['ui-monospace', 'SFMono-Regular', 'Menlo', 'monospace'],
+      transitionDuration: {
+        micro: 'var(--t-micro)',
+        fast: 'var(--t-fast)',
+        enter: 'var(--t-enter)',
       },
-      boxShadow: {
-        glass: 'inset 0 1px 0 0 rgba(255,255,255,0.05), 0 1px 2px 0 rgba(0,0,0,0.4)',
-        'glass-lg': 'inset 0 1px 0 0 rgba(255,255,255,0.06), 0 12px 40px -12px rgba(0,0,0,0.7)',
-        'glow-accent': '0 0 0 1px rgba(139,124,246,0.4), 0 0 24px -4px rgba(139,124,246,0.5)',
+      transitionTimingFunction: {
+        out: 'var(--ease-out)',
+        standard: 'var(--ease-standard)',
+        exit: 'var(--ease-exit)',
       },
       keyframes: {
-        'pulse-ring': {
-          '0%': { boxShadow: '0 0 0 0 rgba(139, 124, 246, 0.5)' },
-          '70%': { boxShadow: '0 0 0 6px rgba(139, 124, 246, 0)' },
-          '100%': { boxShadow: '0 0 0 0 rgba(139, 124, 246, 0)' },
-        },
-        'fade-in-up': {
-          '0%': { opacity: '0', transform: 'translateY(4px)' },
-          '100%': { opacity: '1', transform: 'translateY(0)' },
-        },
-        // event-row entrance — the signature stream motion
-        'rise-in': {
-          '0%': { opacity: '0', transform: 'translateY(7px) scale(0.995)' },
-          '100%': { opacity: '1', transform: 'translateY(0) scale(1)' },
-        },
-        shimmer: {
-          '0%': { backgroundPosition: '-400px 0' },
-          '100%': { backgroundPosition: '400px 0' },
-        },
-        // skeleton shimmer sweep
+        // skeleton shimmer sweep (statically disabled under reduced motion)
         'shimmer-x': {
           '0%': { transform: 'translateX(-100%)' },
           '100%': { transform: 'translateX(100%)' },
         },
-        highlight: {
-          '0%': { backgroundColor: 'rgba(139, 124, 246, 0.16)' },
-          '100%': { backgroundColor: 'transparent' },
-        },
-        // gold pulse when a commit lands
-        'gold-pulse': {
-          '0%': { boxShadow: '0 0 0 0 rgba(244,201,93,0.45)', borderColor: 'rgba(244,201,93,0.6)' },
-          '100%': { boxShadow: '0 0 0 10px rgba(244,201,93,0)', borderColor: 'rgba(244,201,93,0.25)' },
-        },
-        // preview "updated" sweep
-        sweep: {
-          '0%': { transform: 'translateX(-100%)', opacity: '0.5' },
-          '100%': { transform: 'translateX(300%)', opacity: '0' },
-        },
-        // weaving shuttle — the thinking indicator
-        shuttle: {
-          '0%,100%': { transform: 'translateX(0)' },
-          '50%': { transform: 'translateX(10px)' },
-        },
-        // signature loader ring spin
-        'spin-slow': { to: { transform: 'rotate(360deg)' } },
-        // presence avatars breathe
-        breathe: {
-          '0%,100%': { opacity: '1', transform: 'scale(1)' },
-          '50%': { opacity: '0.82', transform: 'scale(0.94)' },
-        },
-        // ambient glow drift on the newest filament node
-        'node-pulse': {
-          '0%,100%': { opacity: '0.35', transform: 'scale(1)' },
-          '50%': { opacity: '1', transform: 'scale(1.35)' },
-        },
         // streaming caret
         'caret-blink': { '50%': { opacity: '0' } },
-        // segmented control glow
-        'seg-in': { '0%': { opacity: '0.4' }, '100%': { opacity: '1' } },
+        // tool-chip name while running
+        'soft-pulse': { '0%,100%': { opacity: '1' }, '50%': { opacity: '0.7' } },
+        // fresh-change row highlight (history feed)
+        highlight: {
+          '0%': { backgroundColor: 'var(--lav-fill)' },
+          '100%': { backgroundColor: 'transparent' },
+        },
+        // row entrance: fade + 4px rise
+        rise: {
+          '0%': { opacity: '0', transform: 'translateY(4px)' },
+          '100%': { opacity: '1', transform: 'translateY(0)' },
+        },
       },
       animation: {
-        'pulse-ring': 'pulse-ring 1.8s ease-out infinite',
-        'fade-in-up': 'fade-in-up 0.25s ease-out both',
-        'rise-in': 'rise-in 0.24s cubic-bezier(0.16,0.8,0.3,1) both',
-        shimmer: 'shimmer 1.4s linear infinite',
-        'shimmer-x': 'shimmer-x 1.5s ease-in-out infinite',
-        highlight: 'highlight 2.2s ease-out both',
-        'gold-pulse': 'gold-pulse 1.6s ease-out 1',
-        sweep: 'sweep 1s ease-out 1',
-        shuttle: 'shuttle 1.1s ease-in-out infinite',
-        'spin-slow': 'spin-slow 0.9s linear infinite',
-        breathe: 'breathe 2.6s ease-in-out infinite',
-        'node-pulse': 'node-pulse 2s ease-in-out infinite',
+        'shimmer-x': 'shimmer-x 2s var(--ease-standard) infinite',
         'caret-blink': 'caret-blink 1s steps(2) infinite',
+        'soft-pulse': 'soft-pulse 1.4s var(--ease-standard) infinite',
+        highlight: 'highlight 2s var(--ease-standard) both',
+        rise: 'rise var(--t-enter) var(--ease-out) both',
       },
     },
   },
