@@ -21,6 +21,8 @@ interface ConnState {
   viewing: string | null
   /** projectId of the viewed session, for presence bookkeeping */
   viewingProject: string | null
+  /** F5: the event this viewer has in sight (ephemeral read position) */
+  readingEventId: string | null
   /** serializes message handling — a quick sub/unsub must not race itself */
   chain: Promise<void>
 }
@@ -58,6 +60,7 @@ export class Hub {
       projectSubs: new Map(),
       viewing: null,
       viewingProject: null,
+      readingEventId: null,
       chain: Promise.resolve(),
     }
     this.conns.add(conn)
@@ -145,6 +148,7 @@ export class Hub {
       }
       case 'viewing': {
         const previousProject = conn.viewingProject
+        conn.readingEventId = null // read position never outlives the viewed session
         if (msg.sessionId === null) {
           conn.viewing = null
           conn.viewingProject = null
@@ -160,6 +164,14 @@ export class Hub {
         }
         if (conn.viewingProject) this.broadcastPresence(conn.viewingProject)
         else if (previousProject) this.broadcastPresence(previousProject)
+        return
+      }
+      case 'reading': {
+        // only meaningful for the session the connection is actually viewing
+        if (conn.viewing !== msg.sessionId) return
+        if (conn.readingEventId === msg.eventId) return
+        conn.readingEventId = msg.eventId
+        if (conn.viewingProject) this.broadcastPresence(conn.viewingProject)
         return
       }
       case 'sub_project': {
@@ -259,11 +271,13 @@ export class Hub {
       if (!conn.projectSubs.has(projectId)) continue
       const existing = byUser.get(conn.user.id)
       const viewing = conn.viewing ?? existing?.viewing ?? null
+      const readingEventId = conn.readingEventId ?? existing?.readingEventId ?? null
       byUser.set(conn.user.id, {
         userId: conn.user.id,
         name: conn.user.name,
         avatarColor: conn.user.avatarColor,
         viewing,
+        readingEventId,
       })
     }
     return [...byUser.values()]

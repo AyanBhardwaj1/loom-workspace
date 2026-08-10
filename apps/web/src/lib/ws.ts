@@ -138,6 +138,11 @@ class WSClient {
     this.raw({ t: 'viewing', sessionId })
   }
 
+  /** F5: ephemeral read position within the viewed session (callers throttle). */
+  setReading(sessionId: string, eventId: string | null): void {
+    this.raw({ t: 'reading', sessionId, eventId })
+  }
+
   /** Returns false when the socket is down — callers must NOT drop user text silently. */
   sendUserMessage(sessionId: string, text: string): boolean {
     if (!this.isOpen()) {

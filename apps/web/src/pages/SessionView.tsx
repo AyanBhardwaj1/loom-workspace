@@ -23,6 +23,14 @@ import { useProject } from './ProjectShell'
 
 const NUMBER_TIMING: EffectTiming = { duration: 180, easing: 'cubic-bezier(0.2,0,0,1)' }
 
+function formatDuration(ms: number): string {
+  const mins = Math.round(ms / 60_000)
+  if (mins < 1) return '<1 min'
+  if (mins < 60) return `${mins} min`
+  const h = Math.floor(mins / 60)
+  return `${h}h ${mins % 60}m`
+}
+
 export function SessionView() {
   const { sessionId } = useParams<{ sessionId: string }>()
   const { projectId, feed } = useProject()
@@ -42,6 +50,17 @@ export function SessionView() {
   useEffect(() => {
     localStorage.setItem('loom.sidebar.open', sidebarOpen ? '1' : '0')
   }, [sidebarOpen])
+
+  // F6: [ and ] toggle the spectate panel
+  useEffect(() => {
+    const onSidebar = (e: Event) => {
+      const show = Boolean((e as CustomEvent).detail)
+      if (isDesktop) setSidebarOpen(show)
+      else setDrawerOpen(show)
+    }
+    window.addEventListener('loom:sidebar', onSidebar)
+    return () => window.removeEventListener('loom:sidebar', onSidebar)
+  }, [isDesktop])
 
   // presence: tell the hub which session we're looking at
   useEffect(() => {
@@ -74,6 +93,8 @@ export function SessionView() {
   const isDriver = Boolean(session && user && session.driverUserId === user.id)
   const isEnded = session?.status === 'ended'
   const watchers = useMemo(() => feed.presence.filter((p) => p.viewing === sessionId), [feed.presence, sessionId])
+  // F5: other viewers' read positions (never your own avatar)
+  const readers = useMemo(() => watchers.filter((p) => p.userId !== user?.id), [watchers, user?.id])
   const previewReloadKey = useMemo(() => {
     let last = 0
     for (const e of stream.events) {
@@ -261,10 +282,9 @@ export function SessionView() {
             driverColor={session.driverAvatarColor}
             ended={isEnded}
             freshSession={freshSession && isDriver && !isEnded}
-            onFork={(eventId) => {
-              const row = document.activeElement?.closest?.('[data-event-row]') as HTMLElement | null
-              void fork(eventId, row)
-            }}
+            onFork={(eventId, anchorEl) => void fork(eventId, anchorEl)}
+            reportReadingFor={!isDriver && !isEnded ? session.id : null}
+            readers={readers}
             actions={{
               isDriver,
               projectId,
@@ -277,7 +297,51 @@ export function SessionView() {
             }
           />
 
-          {isDriver && !isEnded ? (
+          {isEnded && meta.digest ? (
+            <div className="border-t border-hairline px-6 py-4">
+              <div className="mx-auto max-w-[760px]">
+                <div className="flex items-start justify-between gap-4">
+                  <div className="min-w-0">
+                    <h3 className="text-h4 text-primary">{meta.digest.title}</h3>
+                    <ul className="mt-2 space-y-1">
+                      {meta.digest.bullets.map((b, i) => (
+                        <li key={i} className="flex gap-2 text-body leading-relaxed text-secondary">
+                          <span aria-hidden className="mt-[9px] h-1 w-1 shrink-0 rounded-full bg-lav-500" />
+                          <span className="min-w-0">{b}</span>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                  <div className="tnum shrink-0 text-right font-mono text-small text-tertiary">
+                    <div>
+                      <NumberFlow value={meta.digest.commitCount} transformTiming={NUMBER_TIMING} spinTiming={NUMBER_TIMING} />{' '}
+                      commit{meta.digest.commitCount === 1 ? '' : 's'}
+                    </div>
+                    <div className="mt-0.5">{formatDuration(meta.digest.durationMs)}</div>
+                  </div>
+                </div>
+                {meta.digest.files.length > 0 && (
+                  <div className="mt-3 flex flex-wrap gap-1.5">
+                    {meta.digest.files.map((f) => (
+                      <MonoChip key={f}>{f}</MonoChip>
+                    ))}
+                  </div>
+                )}
+                <div className="mt-3.5 flex items-center gap-2">
+                  <Button variant="primary" size="sm" disabled={forking} onClick={(e) => void fork(undefined, e.currentTarget)}>
+                    <GitFork size={14} strokeWidth={1.5} />
+                    {forking ? 'Forking…' : 'Fork & continue from here'}
+                  </Button>
+                  <Link to={`/replay/${session.id}`}>
+                    <Button variant="ghost" size="sm">
+                      <Play size={14} strokeWidth={1.5} />
+                      Replay
+                    </Button>
+                  </Link>
+                </div>
+              </div>
+            </div>
+          ) : isDriver && !isEnded ? (
             <Composer sessionId={session.id} agentStatus={stream.agentStatus} fresh={freshSession} />
           ) : (
             <div className="border-t border-hairline px-6 py-3.5">

@@ -15,6 +15,13 @@
       "when": 1786230963236,
       "tag": "0001_oval_scarecrow",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1786331698480,
+      "tag": "0002_heavy_captain_universe",
+      "breakpoints": true
     }
   ]
 }

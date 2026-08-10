@@ -44,6 +44,19 @@ export interface ProjectDetail {
   activeSessions: SessionSummary[]
 }
 
+/**
+ * F7 — the artifact a session ends with. Composed from the log's commit
+ * explanations (which are provider-written whenever a real key is active),
+ * so it needs no extra provider call and works identically in mock mode.
+ */
+export interface SessionDigest {
+  title: string
+  bullets: string[]
+  files: string[]
+  commitCount: number
+  durationMs: number
+}
+
 export interface SessionDetail {
   session: SessionSummary
   moduleName: string
@@ -51,6 +64,8 @@ export interface SessionDetail {
   events: import('./events').SessionEvent[]
   /** Highest persisted seq included in `events` (0 if none). */
   lastSeq: number
+  /** present once the session has ended (F7) */
+  digest?: SessionDigest | null
 }
 
 export interface BranchInfo {

@@ -1,4 +1,6 @@
 import { Navigate, Route, Routes } from 'react-router-dom'
+import { CommandPalette } from './components/CommandPalette'
+import { Shortcuts } from './components/Shortcuts'
 import { Spinner } from './components/primitives'
 import { HistoryPage } from './pages/HistoryPage'
 import { Home } from './pages/Home'
@@ -30,16 +32,20 @@ export default function App() {
   }
 
   return (
-    <Routes>
-      <Route path="/" element={<Home />} />
-      <Route path="/replay/:sessionId" element={<ReplayView />} />
-      <Route path="/p/:projectId" element={<ProjectShell />}>
-        <Route index element={<ProjectDashboard />} />
-        <Route path="m/:moduleId" element={<ModuleView />} />
-        <Route path="s/:sessionId" element={<SessionView />} />
-        <Route path="history" element={<HistoryPage />} />
-      </Route>
-      <Route path="*" element={<Navigate to="/" replace />} />
-    </Routes>
+    <>
+      <Routes>
+        <Route path="/" element={<Home />} />
+        <Route path="/replay/:sessionId" element={<ReplayView />} />
+        <Route path="/p/:projectId" element={<ProjectShell />}>
+          <Route index element={<ProjectDashboard />} />
+          <Route path="m/:moduleId" element={<ModuleView />} />
+          <Route path="s/:sessionId" element={<SessionView />} />
+          <Route path="history" element={<HistoryPage />} />
+        </Route>
+        <Route path="*" element={<Navigate to="/" replace />} />
+      </Routes>
+      <CommandPalette />
+      <Shortcuts />
+    </>
   )
 }

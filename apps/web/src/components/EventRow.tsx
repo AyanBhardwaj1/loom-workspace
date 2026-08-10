@@ -18,10 +18,12 @@ import {
 } from 'lucide-react'
 import { memo, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { Link } from 'react-router-dom'
-import type { SessionEventOf } from '@loom/shared'
+import type { PresenceUser, SessionEventOf } from '@loom/shared'
 import { flipContainer, momentCommitSettle } from '../lib/choreography'
 import { groupForDisplay, parseUnifiedDiff, type DiffGroup } from '../lib/diff'
 import { TokenLine, useHighlightedLines } from './code'
+import { EvolutionPlayer } from './EvolutionPlayer'
+import { Popover, PopoverContent, PopoverTrigger } from './overlay'
 import { Avatar, Button, Pill, Spinner, cn } from './primitives'
 import type { DisplayItem, RowActions } from './eventStream'
 
@@ -52,6 +54,8 @@ export const EventRow = memo(function EventRow({
   animate = false,
   onFork,
   actions,
+  evolutions,
+  readers,
 }: {
   item: DisplayItem
   compact?: boolean
@@ -59,17 +63,40 @@ export const EventRow = memo(function EventRow({
   driverColor: string
   /** true only for rows that arrive live (not the initial load) */
   animate?: boolean
-  onFork?: (eventId: string) => void
+  onFork?: (eventId: string, anchorEl: HTMLElement | null) => void
   actions?: RowActions
+  /** F4: per-path successive file contents for the evolution player */
+  evolutions?: Map<string, string[]> | null
+  /** F5: viewers whose read position sits on this event */
+  readers?: PresenceUser[]
 }) {
   const forkId = item.kind === 'tool' ? item.call.id : item.event.id
   const isCommit = item.kind === 'commit'
+  const rowRef = useRef<HTMLDivElement>(null)
+  const [confirmOpen, setConfirmOpen] = useState(false)
 
   return (
     <div
+      ref={rowRef}
       className={clsx('group relative', compact ? 'py-1' : 'py-2', animate && !isCommit && 'animate-rise')}
       data-event-row
+      data-event-id={forkId}
     >
+      {/* F5 — spectators' read positions dock to the thread beside the event */}
+      {!compact && readers && readers.length > 0 && (
+        <span className="absolute -left-[4.5px] top-[calc(50%-8px)] flex flex-col" aria-hidden={false}>
+          {readers.slice(0, 3).map((r, i) => (
+            <span
+              key={r.userId}
+              className="animate-rise rounded-full opacity-70"
+              style={{ marginTop: i > 0 ? -6 : 0 }}
+              title={`${r.name} is reading here`}
+            >
+              <Avatar name={r.name} color={r.avatarColor} size="xs" />
+            </span>
+          ))}
+        </span>
+      )}
       {/* the node on the thread (commit nodes are drawn inside CommitRow for M4) */}
       {!compact && !isCommit && (
         <span
@@ -86,17 +113,46 @@ export const EventRow = memo(function EventRow({
           style={{ background: 'var(--thread-hover)' }}
         />
       )}
+      {/* F3 — fork from any event: ghost icon at the row edge → floating confirm */}
       {onFork && item.kind !== 'fork' && item.kind !== 'suggestion' && (
-        <button
-          onClick={() => onFork(forkId)}
-          title="Fork from this point"
-          className="absolute right-0 top-1.5 z-0 hidden h-6 w-6 items-center justify-center rounded text-tertiary transition-colors duration-micro hover:bg-raised hover:text-lav-300 group-hover:flex"
-        >
-          <GitFork size={14} strokeWidth={1.5} />
-        </button>
+        <Popover open={confirmOpen} onOpenChange={setConfirmOpen}>
+          <PopoverTrigger asChild>
+            <button
+              title="Fork from this point"
+              className={clsx(
+                'absolute right-0 top-1.5 z-0 h-6 w-6 items-center justify-center rounded text-tertiary transition-colors duration-micro hover:bg-raised hover:text-lav-300',
+                confirmOpen ? 'flex' : 'hidden group-hover:flex',
+              )}
+            >
+              <GitFork size={14} strokeWidth={1.5} />
+            </button>
+          </PopoverTrigger>
+          <PopoverContent side="left" align="start" className="w-72">
+            <div className="text-ui text-primary">Fork from this point</div>
+            <p className="mt-1 text-small leading-relaxed text-secondary">
+              You'll get the conversation and code exactly as of this event. The original session keeps going.
+            </p>
+            <div className="mt-2.5 flex justify-end gap-2">
+              <Button variant="ghost" size="sm" onClick={() => setConfirmOpen(false)}>
+                Cancel
+              </Button>
+              <Button
+                variant="primary"
+                size="sm"
+                onClick={() => {
+                  setConfirmOpen(false)
+                  onFork(forkId, rowRef.current)
+                }}
+              >
+                <GitFork size={13} strokeWidth={1.5} />
+                Fork
+              </Button>
+            </div>
+          </PopoverContent>
+        </Popover>
       )}
       <div className={compact ? '' : 'pl-6 pr-8'}>
-        <RowBody item={item} compact={compact} driverName={driverName} driverColor={driverColor} animate={animate} actions={actions} />
+        <RowBody item={item} compact={compact} driverName={driverName} driverColor={driverColor} animate={animate} actions={actions} evolutions={evolutions} />
       </div>
     </div>
   )
@@ -109,6 +165,7 @@ function RowBody({
   driverColor,
   animate,
   actions,
+  evolutions,
 }: {
   item: DisplayItem
   compact: boolean
@@ -116,6 +173,7 @@ function RowBody({
   driverColor: string
   animate: boolean
   actions?: RowActions
+  evolutions?: Map<string, string[]> | null
 }) {
   switch (item.kind) {
     case 'user':
@@ -129,7 +187,7 @@ function RowBody({
     case 'tool':
       return <ToolChip item={item} compact={compact} />
     case 'file':
-      return <DiffCard event={item.event} compact={compact} />
+      return <DiffCard event={item.event} compact={compact} evolutionSteps={evolutions?.get(item.event.payload.path)} />
     case 'commit':
       return <CommitRow event={item.event} compact={compact} animate={animate} />
     case 'note': {
@@ -345,17 +403,26 @@ export function DiffCard({
   event,
   compact,
   defaultOpen,
-  onPlayEvolution,
+  evolutionSteps,
 }: {
   event: SessionEventOf<'file_change'>
   compact: boolean
   defaultOpen?: boolean
-  onPlayEvolution?: () => void
+  /** F4: the file's successive contents; ≥2 states unlocks "Play evolution" */
+  evolutionSteps?: string[]
 }) {
+  const [evoOpen, setEvoOpen] = useState(false)
   const p = event.payload
   if (compact) {
     // spectate density: header-only, click expands in place
     return <CompactDiff event={event} />
+  }
+  if (evoOpen && evolutionSteps) {
+    return (
+      <div className="max-w-[70ch] overflow-hidden rounded-lg border border-hairline bg-surface">
+        <EvolutionPlayer path={p.path} contents={evolutionSteps} onClose={() => setEvoOpen(false)} />
+      </div>
+    )
   }
   return (
     <UnifiedDiffView
@@ -364,7 +431,7 @@ export function DiffCard({
       deletions={p.deletions}
       diff={p.unifiedDiff}
       defaultOpen={defaultOpen ?? true}
-      onPlayEvolution={onPlayEvolution}
+      onPlayEvolution={evolutionSteps && evolutionSteps.length >= 2 ? () => setEvoOpen(true) : undefined}
     />
   )
 }

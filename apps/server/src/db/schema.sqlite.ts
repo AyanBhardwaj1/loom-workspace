@@ -92,6 +92,8 @@ export const sessions = sqliteTable(
     parentSessionId: text('parent_session_id'),
     forkedAtEventId: text('forked_at_event_id'),
     lastEventAt: text('last_event_at'),
+    /** F7: JSON SessionDigest, set when the session ends */
+    digest: text('digest'),
     createdAt: text('created_at').notNull(),
   },
   (t) => ({

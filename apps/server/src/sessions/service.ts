@@ -248,6 +248,7 @@ export class SessionService {
       forkedAtEventId: null,
       lastEventAt: now,
       createdAt: now,
+      digest: null,
     }
     await db.insert(t.sessions).values(session)
 
@@ -364,6 +365,7 @@ export class SessionService {
       forkedAtEventId: cutoffEvent?.id ?? null,
       lastEventAt: now,
       createdAt: now,
+      digest: null,
     }
     await db.insert(t.sessions).values(session)
 
@@ -456,13 +458,51 @@ export class SessionService {
     const { db, t } = this.dbh
     const session = await this.getSession(sessionId)
     if (!session || session.status === 'ended') return
-    await db.update(t.sessions).set({ status: 'ended' }).where(eq(t.sessions.id, sessionId))
+    const digest = await this.buildDigest(sessionId, session.title, session.createdAt)
+    await db
+      .update(t.sessions)
+      .set({ status: 'ended', digest: digest ? JSON.stringify(digest) : null })
+      .where(eq(t.sessions.id, sessionId))
     await this.appendEvent(sessionId, 'status', { status: 'idle', note: 'Session ended' })
     this.publishProjectUpdate(session.projectId, {
       kind: 'session_ended',
       sessionId,
       moduleId: session.moduleId,
     })
+  }
+
+  /**
+   * F7 — the session's closing artifact, composed deterministically from the
+   * log. Commit explanations are provider-written whenever a real key is
+   * active, so the digest inherits provider quality with zero extra calls.
+   */
+  private async buildDigest(
+    sessionId: string,
+    title: string,
+    createdAt: string,
+  ): Promise<import('@loom/shared').SessionDigest | null> {
+    const events = await this.getEvents(sessionId)
+    if (events.length === 0) return null
+    const commits = events.filter((e) => e.type === 'commit')
+    const files = new Set<string>()
+    for (const e of events) {
+      if (e.type === 'file_change') files.add((e.payload as { path: string }).path)
+    }
+    const bullets = commits
+      .slice(-3)
+      .map((e) => (e.payload as { plainExplanation: string }).plainExplanation)
+      .reverse()
+    if (bullets.length === 0) {
+      const userMessages = events.filter((e) => e.type === 'user_message').length
+      bullets.push(
+        userMessages > 0
+          ? `${userMessages} prompt${userMessages === 1 ? '' : 's'} — no committed changes.`
+          : 'No activity in this session.',
+      )
+    }
+    const last = events[events.length - 1]!
+    const durationMs = Math.max(0, new Date(last.createdAt).getTime() - new Date(createdAt).getTime())
+    return { title, bullets, files: [...files], commitCount: commits.length, durationMs }
   }
 
   /**

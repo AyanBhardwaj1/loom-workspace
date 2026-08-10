@@ -15,6 +15,13 @@
       "when": 1786230962761,
       "tag": "0001_broken_the_santerians",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "6",
+      "when": 1786331698186,
+      "tag": "0002_conscious_rhino",
+      "breakpoints": true
     }
   ]
 }

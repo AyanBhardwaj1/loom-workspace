@@ -38,6 +38,11 @@ export const clientMessageSchema = z.discriminatedUnion('t', [
    * user is not focused on, and must not corrupt watcher counts.
    */
   z.object({ t: z.literal('viewing'), sessionId: z.string().nullable() }),
+  /**
+   * F5 — read position: which EVENT the viewer has in sight, throttled ≥1s
+   * client-side. Ephemeral (never persisted); null clears it.
+   */
+  z.object({ t: z.literal('reading'), sessionId: z.string(), eventId: z.string().nullable() }),
 ])
 
 export type ClientMessage = z.infer<typeof clientMessageSchema>
@@ -52,6 +57,8 @@ export const presenceUserSchema = z.object({
   avatarColor: z.string(),
   /** sessionId the user is currently viewing (driving or spectating), if any */
   viewing: z.string().nullable(),
+  /** F5: the event this viewer has in sight (ephemeral read position) */
+  readingEventId: z.string().nullable().optional(),
 })
 export type PresenceUser = z.infer<typeof presenceUserSchema>
 

@@ -1,8 +1,10 @@
 import { clsx } from 'clsx'
 import { ArrowDown } from 'lucide-react'
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
-import type { AgentActivityStatus, SessionEvent } from '@loom/shared'
+import type { AgentActivityStatus, PresenceUser, SessionEvent } from '@loom/shared'
 import { momentAgentAwakens, momentSessionStart } from '../lib/choreography'
+import { buildEvolutions } from '../lib/diff'
+import { wsClient } from '../lib/ws'
 import { EventRow } from './EventRow'
 import { toDisplayItems, type RowActions } from './eventStream'
 
@@ -24,6 +26,8 @@ export function ChatLog({
   onFork,
   actions,
   emptyHint,
+  reportReadingFor = null,
+  readers,
 }: {
   events: SessionEvent[]
   streamingText: string
@@ -35,9 +39,13 @@ export function ChatLog({
   compact?: boolean
   /** brand-new session (M1 plays the thread draw once) */
   freshSession?: boolean
-  onFork?: (eventId: string) => void
+  onFork?: (eventId: string, anchorEl: HTMLElement | null) => void
   actions?: RowActions
   emptyHint?: string
+  /** F5: report this viewer's read position (session id enables it) */
+  reportReadingFor?: string | null
+  /** F5: other viewers' read positions, docked to the thread */
+  readers?: PresenceUser[]
 }) {
   const containerRef = useRef<HTMLDivElement>(null)
   const contentRef = useRef<HTMLDivElement>(null)
@@ -46,6 +54,8 @@ export function ChatLog({
   const [atBottom, setAtBottom] = useState(true)
   const [contentH, setContentH] = useState(0)
   const items = useMemo(() => toDisplayItems(events), [events])
+  // F4: per-path successive contents (only paths touched more than once)
+  const evolutions = useMemo(() => (compact ? null : buildEvolutions(events)), [events, compact])
 
   // only animate rows that arrive AFTER the initial load
   const baselineRef = useRef<number | null>(null)
@@ -101,7 +111,49 @@ export function ChatLog({
     const el = containerRef.current
     if (!el) return
     setAtBottom(el.scrollTop + el.clientHeight >= el.scrollHeight - 90)
+    reportReading()
   }
+
+  // F5 — report the read position (bottom-most visible event), throttled ≥1s
+  const lastReport = useRef<{ at: number; eventId: string | null }>({ at: 0, eventId: null })
+  const reportTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const reportReading = () => {
+    if (!reportReadingFor) return
+    if (reportTimer.current) return
+    reportTimer.current = setTimeout(() => {
+      reportTimer.current = null
+      const container = containerRef.current
+      if (!container) return
+      const bottom = container.getBoundingClientRect().bottom
+      let current: string | null = null
+      for (const row of container.querySelectorAll<HTMLElement>('[data-event-id]')) {
+        if (row.getBoundingClientRect().top < bottom - 24) current = row.dataset.eventId ?? null
+        else break
+      }
+      if (current !== lastReport.current.eventId) {
+        lastReport.current = { at: Date.now(), eventId: current }
+        wsClient.setReading(reportReadingFor, current)
+      }
+    }, 1000)
+  }
+  useEffect(() => {
+    return () => {
+      if (reportTimer.current) clearTimeout(reportTimer.current)
+    }
+  }, [])
+
+  // F5 — other viewers' read positions, grouped per event
+  const readersByEvent = useMemo(() => {
+    if (!readers || readers.length === 0) return null
+    const map = new Map<string, PresenceUser[]>()
+    for (const r of readers) {
+      if (!r.readingEventId) continue
+      const list = map.get(r.readingEventId) ?? []
+      list.push(r)
+      map.set(r.readingEventId, list)
+    }
+    return map.size > 0 ? map : null
+  }, [readers])
 
   const showThinking = busy && !streaming
 
@@ -140,18 +192,23 @@ export function ChatLog({
             </div>
           )}
 
-          {items.map((item, i) => (
-            <EventRow
-              key={itemKey(item, i)}
-              item={item}
-              compact={compact}
-              driverName={driverName}
-              driverColor={driverColor}
-              animate={i >= baseline}
-              onFork={onFork}
-              actions={actions}
-            />
-          ))}
+          {items.map((item, i) => {
+            const eventId = itemKey(item, i)
+            return (
+              <EventRow
+                key={eventId}
+                item={item}
+                compact={compact}
+                driverName={driverName}
+                driverColor={driverColor}
+                animate={i >= baseline}
+                onFork={onFork}
+                actions={actions}
+                evolutions={evolutions}
+                readers={readersByEvent?.get(eventId)}
+              />
+            )
+          })}
 
           {/* streaming: min-heights reserved before content lands — zero CLS */}
           {(streaming || showThinking) && (

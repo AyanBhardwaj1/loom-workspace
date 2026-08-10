@@ -1,6 +1,6 @@
 import { useQuery } from '@tanstack/react-query'
 import { ChevronDown, Search, Settings } from 'lucide-react'
-import { useState, type ReactNode } from 'react'
+import { useEffect, useState, type ReactNode } from 'react'
 import { Link, NavLink, useNavigate } from 'react-router-dom'
 import type { ProjectSummary, PresenceUser } from '@loom/shared'
 import { api } from '../lib/api'
@@ -35,6 +35,13 @@ export function TopBar({
   const navigate = useNavigate()
   const [aiOpen, setAiOpen] = useState(false)
   const [switcherOpen, setSwitcherOpen] = useState(false)
+
+  // the palette (and anything else) can open provider settings from anywhere
+  useEffect(() => {
+    const onOpen = () => setAiOpen(true)
+    window.addEventListener('loom:settings', onOpen)
+    return () => window.removeEventListener('loom:settings', onOpen)
+  }, [])
 
   const projectsQuery = useQuery({
     queryKey: ['projects'],

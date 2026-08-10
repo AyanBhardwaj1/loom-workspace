@@ -1,8 +1,17 @@
 import type { FastifyInstance } from 'fastify'
 import { z } from 'zod'
-import type { SessionDetail } from '@loom/shared'
+import type { SessionDetail, SessionDigest } from '@loom/shared'
 import type { Services } from '../services'
 import { makeRequireUser, parseBody } from './helpers'
+
+function parseDigest(raw: string | null | undefined): SessionDigest | null {
+  if (!raw) return null
+  try {
+    return JSON.parse(raw) as SessionDigest
+  } catch {
+    return null
+  }
+}
 
 export async function sessionRoutes(app: FastifyInstance, services: Services): Promise<void> {
   const { projects, sessions } = services
@@ -61,6 +70,7 @@ export async function sessionRoutes(app: FastifyInstance, services: Services): P
       moduleEmoji: module?.emoji ?? '📦',
       events,
       lastSeq: events.length > 0 ? (events[events.length - 1]!.seq ?? 0) : 0,
+      digest: parseDigest(session.digest),
     }
     return detail
   })
