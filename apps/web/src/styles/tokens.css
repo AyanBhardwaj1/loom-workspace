@@ -30,9 +30,9 @@
   /* ---- text ---- */
   --text-primary: #ededf0;
   --text-secondary: #a6a6af;
-  --text-tertiary: rgba(255, 255, 255, 0.42);
+  --text-tertiary: rgba(255, 255, 255, 0.48); /* ≥4.5:1 on every surface (gate 1) */
   --text-disabled: rgba(255, 255, 255, 0.25);
-  --text-linenumber: rgba(255, 255, 255, 0.28); /* diff gutters */
+  --text-linenumber: rgba(255, 255, 255, 0.36); /* diff gutters — ≥3:1 on inset (gate 1) */
   --text-on-accent: #131316;
   --text-on-identity: #0e0e10; /* avatar initials on founder colors */
 
