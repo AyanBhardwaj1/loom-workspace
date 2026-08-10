@@ -1,9 +1,10 @@
+import { Eye, EyeOff } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { clsx } from 'clsx'
 import { BRAND, type AiProviderKind, type AiSettingsDto } from '@loom/shared'
 import { api } from '../lib/api'
-import { Dialog, Spinner } from './ui'
+import { Modal } from './overlay'
+import { Button, SegmentedControl, Spinner, StatusDot, cn } from './primitives'
 
 const PROVIDER_INFO: Record<AiProviderKind, { label: string; keyPlaceholder: string; modelPlaceholder: string }> = {
   anthropic: {
@@ -26,26 +27,27 @@ export function useAiSettings() {
   })
 }
 
-/** Chip for headers: what is the agent, right now. */
+/** Header chip: what the agent is, right now. Honest status, no decoration. */
 export function AgentModeChip({ onClick }: { onClick?: () => void }) {
   const settings = useAiSettings()
   if (!settings.data) return null
   const s = settings.data
-  const label = s.mode === 'mock' ? 'mock agent' : `${s.mode === 'anthropic' ? 'claude' : 'llm'} · ${s.model}`
+  const mock = s.mode === 'mock'
   return (
     <button
       onClick={onClick}
       title={
-        s.mode === 'mock'
+        mock
           ? 'Simulated agent (no API key configured) — click to add one'
           : `Real model via ${s.mode} (${s.source === 'env' ? 'server env key' : 'key set in the UI'})`
       }
-      className={clsx(
-        'chip max-w-[14rem] truncate text-[10px] transition-colors hover:border-accent',
-        s.mode === 'mock' ? 'text-ink-300' : 'border-accent/50 text-accent-soft',
+      className={cn(
+        'inline-flex h-6 max-w-[15rem] items-center gap-1.5 truncate rounded-full border px-2.5 text-small transition-colors duration-micro',
+        mock ? 'border-hairline text-secondary hover:border-hairline-hover' : 'border-lav-border text-lav-300 hover:border-lav-400',
       )}
     >
-      {s.mode === 'mock' ? '🤖' : '✨'} {label}
+      <StatusDot tone={mock ? 'idle' : 'accent'} />
+      {mock ? 'Mock agent' : `${s.mode === 'anthropic' ? 'Claude' : 'LLM'} · ${s.model}`}
     </button>
   )
 }
@@ -55,6 +57,7 @@ export function AiSettingsDialog({ open, onClose }: { open: boolean; onClose: ()
   const settings = useAiSettings()
   const [provider, setProvider] = useState<AiProviderKind>('anthropic')
   const [apiKey, setApiKey] = useState('')
+  const [showKey, setShowKey] = useState(false)
   const [model, setModel] = useState('')
   const [baseUrl, setBaseUrl] = useState('')
   const [busy, setBusy] = useState(false)
@@ -66,6 +69,7 @@ export function AiSettingsDialog({ open, onClose }: { open: boolean; onClose: ()
       setError(null)
       setSaved(false)
       setApiKey('')
+      setShowKey(false)
       if (settings.data && settings.data.mode !== 'mock') {
         setProvider(settings.data.mode)
         setModel(settings.data.model ?? '')
@@ -89,7 +93,7 @@ export function AiSettingsDialog({ open, onClose }: { open: boolean; onClose: ()
       setSaved(true)
       setApiKey('')
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Could not save the key')
+      setError(err instanceof Error ? err.message : 'Could not save the key. Check it and try again.')
     } finally {
       setBusy(false)
     }
@@ -104,7 +108,7 @@ export function AiSettingsDialog({ open, onClose }: { open: boolean; onClose: ()
       await queryClient.invalidateQueries({ queryKey: ['ai-settings'] })
       setSaved(false)
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Could not reset')
+      setError(err instanceof Error ? err.message : 'Could not reset.')
     } finally {
       setBusy(false)
     }
@@ -113,97 +117,101 @@ export function AiSettingsDialog({ open, onClose }: { open: boolean; onClose: ()
   const current = settings.data
 
   return (
-    <Dialog open={open} onClose={onClose} title="AI provider">
+    <Modal open={open} onClose={onClose} title="AI provider">
       <div className="space-y-4">
+        {/* honest status row */}
         {current && (
-          <div className="glow-edge rounded-xl border border-white/[0.08] bg-white/[0.02] px-3.5 py-2.5 pl-4 text-xs"
-            style={{ ['--edge' as string]: current.mode === 'mock' ? '#585874' : 'var(--thread-agent)' }}
-          >
-            <span className="micro-label">currently</span>
-            <div className="mt-1">
-              {current.mode === 'mock' ? (
-                <span className="text-ink-100">🤖 built-in mock agent (free, no key)</span>
-              ) : (
-                <span className="text-accent-soft">
-                  ✨ {current.mode} · <span className="font-mono">{current.model}</span> · key{' '}
-                  <span className="font-mono">{current.maskedKey}</span>
-                  {current.source === 'env' ? ' (from server env)' : ''}
-                </span>
-              )}
-            </div>
+          <div className="flex items-center gap-2 rounded border border-hairline bg-inset px-3 py-2 text-small">
+            <StatusDot tone={current.mode === 'mock' ? 'idle' : 'ok'} />
+            {current.mode === 'mock' ? (
+              <span className="text-secondary">Mock agent — no key. The full product works, free.</span>
+            ) : (
+              <span className="text-secondary">
+                <span className="text-ok">{current.mode === 'anthropic' ? 'Claude' : 'LLM'} — live.</span>{' '}
+                <span className="font-mono">{current.model}</span> · key <span className="font-mono">{current.maskedKey}</span>
+                {current.source === 'env' ? ' (server env)' : ''}
+              </span>
+            )}
           </div>
         )}
 
-        {/* provider segmented control */}
-        <div className="relative flex rounded-xl border border-white/[0.1] bg-black/25 p-0.5">
-          <span
-            className="absolute inset-y-0.5 w-[calc(50%-2px)] rounded-[10px] bg-accent transition-transform duration-200 ease-[cubic-bezier(0.16,0.8,0.3,1)]"
-            style={{ transform: provider === 'openrouter' ? 'translateX(100%)' : 'translateX(0)' }}
-          />
-          {(Object.keys(PROVIDER_INFO) as AiProviderKind[]).map((p) => (
-            <button
-              key={p}
-              onClick={() => setProvider(p)}
-              className={clsx(
-                'relative z-10 flex-1 px-3 py-2 text-xs font-medium transition-colors duration-200',
-                provider === p ? 'text-ink-950' : 'text-ink-300 hover:text-ink-100',
-              )}
-            >
-              {PROVIDER_INFO[p].label}
-            </button>
-          ))}
-        </div>
+        <SegmentedControl
+          value={provider}
+          onChange={setProvider}
+          className="w-full"
+          options={(Object.keys(PROVIDER_INFO) as AiProviderKind[]).map((p) => ({
+            value: p,
+            label: PROVIDER_INFO[p].label,
+          }))}
+        />
 
         <div className="space-y-2.5">
-          <input
-            type="password"
-            className="input"
-            placeholder={`${PROVIDER_INFO[provider].label} API key (${PROVIDER_INFO[provider].keyPlaceholder})`}
-            value={apiKey}
-            onChange={(e) => setApiKey(e.target.value)}
-            autoComplete="off"
-          />
-          <input
-            className="input"
-            placeholder={`Model — ${PROVIDER_INFO[provider].modelPlaceholder}`}
-            value={model}
-            onChange={(e) => setModel(e.target.value)}
-          />
-          {provider === 'openrouter' && (
+          <label className="block">
+            <span className="mb-1 block text-small font-medium text-secondary">API key</span>
+            <span className="relative block">
+              <input
+                type={showKey ? 'text' : 'password'}
+                className="loom-input pr-9 font-mono text-code"
+                placeholder={PROVIDER_INFO[provider].keyPlaceholder}
+                value={apiKey}
+                onChange={(e) => setApiKey(e.target.value)}
+                autoComplete="off"
+              />
+              <button
+                type="button"
+                onClick={() => setShowKey((v) => !v)}
+                title={showKey ? 'Hide the key' : 'Reveal the key'}
+                className="absolute right-2 top-1/2 -translate-y-1/2 text-tertiary transition-colors duration-micro hover:text-secondary"
+              >
+                {showKey ? <EyeOff size={14} strokeWidth={1.5} /> : <Eye size={14} strokeWidth={1.5} />}
+              </button>
+            </span>
+          </label>
+          <label className="block">
+            <span className="mb-1 block text-small font-medium text-secondary">Model</span>
             <input
-              className="input"
-              placeholder="Base URL — https://openrouter.ai/api/v1 (default; any OpenAI-compatible endpoint works)"
-              value={baseUrl}
-              onChange={(e) => setBaseUrl(e.target.value)}
+              className="loom-input font-mono text-code"
+              placeholder={PROVIDER_INFO[provider].modelPlaceholder}
+              value={model}
+              onChange={(e) => setModel(e.target.value)}
             />
+          </label>
+          {provider === 'openrouter' && (
+            <label className="block">
+              <span className="mb-1 block text-small font-medium text-secondary">Base URL</span>
+              <input
+                className="loom-input font-mono text-code"
+                placeholder="https://openrouter.ai/api/v1 (default; any OpenAI-compatible endpoint)"
+                value={baseUrl}
+                onChange={(e) => setBaseUrl(e.target.value)}
+              />
+            </label>
           )}
         </div>
 
-        {error && <div className="rounded-xl border border-red-900/60 bg-red-950/30 px-3.5 py-2.5 text-xs text-red-300">{error}</div>}
+        {error && <div className="rounded border border-danger-border bg-danger-fill px-3 py-2 text-small text-danger">{error}</div>}
         {saved && (
-          <div className="rounded-xl border border-emerald-800 bg-emerald-950/30 px-3.5 py-2.5 text-xs text-emerald-200">
-            Key verified and active — every session now chats with the real model. New messages in any
-            open session use it immediately.
+          <div className="rounded border border-ok-border bg-ok-fill px-3 py-2 text-small text-ok">
+            Key verified and active — every session now chats with the real model.
           </div>
         )}
 
         <div className="flex items-center gap-2">
-          <button onClick={() => void save()} disabled={busy || !apiKey.trim()} className="btn-primary flex-1">
-            {busy ? <Spinner className="h-4 w-4" /> : 'Verify & use this key'}
-          </button>
+          <Button variant="primary" className="flex-1" onClick={() => void save()} disabled={busy || !apiKey.trim()}>
+            {busy ? <Spinner className="h-4 w-4" /> : 'Save key'}
+          </Button>
           {current && current.mode !== 'mock' && current.source === 'runtime' && (
-            <button onClick={() => void useMock()} disabled={busy} className="btn-secondary text-xs">
+            <Button variant="ghost" size="md" onClick={() => void useMock()} disabled={busy}>
               Use mock instead
-            </button>
+            </Button>
           )}
         </div>
 
-        <p className="text-[10px] leading-relaxed text-ink-400">
-          The key is checked with a 1-token test call, then stored in this {BRAND} server's own database and
-          used only to call your chosen provider. It never reaches other users' browsers — teammates just
-          see the agent get smarter.
+        <p className="text-small leading-relaxed text-tertiary">
+          Checked with a 1-token test call, stored in this {BRAND} server's own database, and used only to call
+          your chosen provider. It never reaches other users' browsers — teammates just see the agent get smarter.
         </p>
       </div>
-    </Dialog>
+    </Modal>
   )
 }

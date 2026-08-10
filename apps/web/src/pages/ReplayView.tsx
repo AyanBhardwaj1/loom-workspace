@@ -1,13 +1,15 @@
+import { Check, GitFork, Link2, Pause, Play, SkipBack, SkipForward } from 'lucide-react'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
-import { clsx } from 'clsx'
 import type { AgentActivityStatus } from '@loom/shared'
 import { ChatLog } from '../components/ChatLog'
-import { Avatar, Spinner } from '../components/ui'
+import { Wordmark } from '../components/Wordmark'
+import { Tooltip } from '../components/overlay'
+import { Avatar, Button, IconButton, Pill, SegmentedControl, Spinner } from '../components/primitives'
 import { api } from '../lib/api'
 import { useReplayStream } from '../state/useReplayStream'
 
-const SPEEDS = [0.5, 1, 2, 4] as const
+const SPEEDS = ['1', '2', '4'] as const
 const BASE_STEP_MS = 750
 
 export function ReplayView() {
@@ -15,17 +17,16 @@ export function ReplayView() {
   const navigate = useNavigate()
   const { detail, events, loading, error } = useReplayStream(sessionId ?? null)
 
-  const [position, setPosition] = useState(0) // number of events revealed
+  const [position, setPosition] = useState(0)
   const [playing, setPlaying] = useState(false)
-  const [speed, setSpeed] = useState<(typeof SPEEDS)[number]>(1)
+  const [speed, setSpeed] = useState<(typeof SPEEDS)[number]>('1')
   const [forking, setForking] = useState(false)
   const [copied, setCopied] = useState(false)
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   const total = events.length
 
-  // once loaded, start paused at the end (the "arrived 3h late" viewer sees the
-  // finished state; hit ⏮ or scrub to replay from anywhere)
+  // start paused at the end — the late viewer sees the finished state
   const initialized = useRef(false)
   useEffect(() => {
     if (!initialized.current && total > 0) {
@@ -34,18 +35,38 @@ export function ReplayView() {
     }
   }, [total])
 
-  // advance while playing
   useEffect(() => {
     if (!playing) return
     if (position >= total) {
       setPlaying(false)
       return
     }
-    timer.current = setTimeout(() => setPosition((p) => Math.min(p + 1, total)), BASE_STEP_MS / speed)
+    timer.current = setTimeout(() => setPosition((p) => Math.min(p + 1, total)), BASE_STEP_MS / Number(speed))
     return () => {
       if (timer.current) clearTimeout(timer.current)
     }
   }, [playing, position, total, speed])
+
+  // keyboard: ← → step, space toggles
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return
+      if (e.key === 'ArrowLeft') {
+        e.preventDefault()
+        setPlaying(false)
+        setPosition((p) => Math.max(0, p - 1))
+      } else if (e.key === 'ArrowRight') {
+        e.preventDefault()
+        setPlaying(false)
+        setPosition((p) => Math.min(total, p + 1))
+      } else if (e.key === ' ') {
+        e.preventDefault()
+        setPlaying((v) => (position >= total ? v : !v))
+      }
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [total, position])
 
   const revealed = useMemo(() => events.slice(0, position), [events, position])
 
@@ -58,7 +79,6 @@ export function ReplayView() {
     [events],
   )
 
-  // derive the agent's status at the current point (for the thinking indicator)
   const agentStatus: AgentActivityStatus = useMemo(() => {
     for (let i = revealed.length - 1; i >= 0; i--) {
       const e = revealed[i]!
@@ -69,7 +89,7 @@ export function ReplayView() {
   }, [revealed])
 
   const play = () => {
-    if (position >= total) setPosition(0) // replay from the top
+    if (position >= total) setPosition(0)
     setPlaying(true)
   }
 
@@ -83,9 +103,7 @@ export function ReplayView() {
       })
       const pid = detail?.session.projectId
       navigate(pid ? `/p/${pid}/s/${res.session.id}` : `/`)
-    } catch (err) {
-      alert(err instanceof Error ? err.message : 'Fork failed')
-    } finally {
+    } catch {
       setForking(false)
     }
   }
@@ -96,23 +114,23 @@ export function ReplayView() {
       setCopied(true)
       setTimeout(() => setCopied(false), 2000)
     } catch {
-      // clipboard blocked — no-op
+      /* clipboard blocked */
     }
   }
 
   if (loading) {
     return (
       <div className="flex h-full items-center justify-center">
-        <Spinner className="h-7 w-7" />
+        <Spinner className="h-6 w-6" />
       </div>
     )
   }
   if (error || !detail) {
     return (
-      <div className="flex h-full flex-col items-center justify-center gap-3 text-sm text-ink-300">
-        <div>{error ?? 'Replay not found'}</div>
-        <Link className="btn-secondary" to="/">
-          Home
+      <div className="flex h-full flex-col items-center justify-center gap-3 text-ui text-secondary">
+        <div>{error ?? 'Replay not found.'}</div>
+        <Link to="/">
+          <Button>Home</Button>
         </Link>
       </div>
     )
@@ -120,131 +138,118 @@ export function ReplayView() {
 
   const s = detail.session
   const atEnd = position >= total
-  const scrubEvent = position > 0 ? events[position - 1] : null
 
   return (
-    <div className="mx-auto flex h-full max-w-3xl flex-col">
-      {/* header */}
-      <header className="flex items-center gap-3 border-b border-ink-700 bg-ink-900/60 px-5 py-3">
-        <Link to="/" className="text-lg" title="Home">
-          🧵
+    <div className="flex h-full flex-col">
+      <header className="flex h-12 shrink-0 items-center gap-3 border-b border-hairline px-4">
+        <Link to="/" className="text-primary transition-colors duration-micro hover:text-lav-300" aria-label="Home">
+          <Wordmark height={16} />
         </Link>
-        <span className="text-lg">{detail.moduleEmoji}</span>
+        <Pill tone="accent">Replay</Pill>
         <div className="min-w-0">
-          <div className="truncate text-sm font-medium">{s.title}</div>
-          <div className="text-[11px] text-ink-400">
-            replay · {detail.moduleName} · driven by {s.driverName}
+          <div className="truncate text-ui font-medium text-primary">{s.title}</div>
+          <div className="truncate text-small text-tertiary">
+            {detail.moduleName} · driven by {s.driverName}
           </div>
         </div>
         <div className="ml-auto flex items-center gap-2">
-          <button onClick={() => void copyLink()} className="btn-secondary text-xs" title="Copy a link to this replay">
-            {copied ? '✓ Copied' : '🔗 Copy replay link'}
-          </button>
-          <Link to={`/p/${s.projectId}/s/${s.id}`} className="btn-ghost text-xs">
-            Open live session →
+          <Button variant="ghost" size="sm" onClick={() => void copyLink()}>
+            {copied ? <Check size={14} strokeWidth={1.5} className="text-ok" /> : <Link2 size={14} strokeWidth={1.5} />}
+            {copied ? 'Copied' : 'Copy replay link'}
+          </Button>
+          <Link to={`/p/${s.projectId}/s/${s.id}`}>
+            <Button variant="ghost" size="sm">
+              Open live session →
+            </Button>
           </Link>
         </div>
       </header>
 
-      {/* chat playback */}
-      <ChatLog
-        events={revealed}
-        streamingText=""
-        agentStatus={agentStatus}
-        driverName={s.driverName}
-        driverColor={s.driverAvatarColor}
-        onFork={(eventId) => void fork(eventId)}
-        emptyHint="Press play to replay this session from the beginning."
-      />
+      <div className="mx-auto flex min-h-0 w-full max-w-[860px] flex-1 flex-col">
+        <ChatLog
+          events={revealed}
+          streamingText=""
+          agentStatus={agentStatus}
+          driverName={s.driverName}
+          driverColor={s.driverAvatarColor}
+          onFork={(eventId) => void fork(eventId)}
+          emptyHint="Press play to replay this session from the beginning."
+        />
 
-      {/* transport — a tactile playback deck */}
-      <div className="border-t border-white/[0.07] bg-ink-950/70 px-5 py-3 backdrop-blur-xl">
-        <div className="flex items-center gap-3">
-          <button onClick={() => setPosition(0)} className="btn-ghost px-2 py-1 text-sm" title="Jump to start">
-            ⏮
-          </button>
-          <button
-            onClick={() => (playing ? setPlaying(false) : play())}
-            className="btn-primary px-3 py-1.5 text-sm"
-            title={playing ? 'Pause' : 'Play'}
-          >
-            {playing ? '⏸ Pause' : atEnd ? '↺ Replay' : '▶ Play'}
-          </button>
-          <button onClick={() => setPosition(total)} className="btn-ghost px-2 py-1 text-sm" title="Jump to end">
-            ⏭
-          </button>
+        {/* the transport — 48px deck above where the composer would sit */}
+        <div className="shrink-0 border-t border-hairline px-4 py-2.5">
+          <div className="flex h-9 items-center gap-2">
+            <IconButton label="Jump to start" onClick={() => setPosition(0)}>
+              <SkipBack size={15} strokeWidth={1.5} />
+            </IconButton>
+            <button
+              onClick={() => (playing ? setPlaying(false) : play())}
+              title={playing ? 'Pause (space)' : 'Play (space)'}
+              className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-lav-500 text-on-accent transition-colors duration-micro hover:bg-lav-400"
+            >
+              {playing ? <Pause size={15} strokeWidth={2} /> : <Play size={15} strokeWidth={2} className="ml-0.5" />}
+            </button>
+            <IconButton label="Jump to end" onClick={() => setPosition(total)}>
+              <SkipForward size={15} strokeWidth={1.5} />
+            </IconButton>
 
-          {/* the replay thread: a filled track + commit beads */}
-          <div className="relative mx-2 h-6 flex-1">
-            <div className="absolute inset-x-0 top-1/2 h-1 -translate-y-1/2 overflow-hidden rounded-full bg-white/[0.08]">
-              <div
-                className="h-full rounded-full bg-gradient-to-r from-accent to-thread-tool transition-[width] duration-100"
-                style={{ width: `${total > 0 ? (position / total) * 100 : 0}%` }}
+            {/* scrubber: 2px track, commit notches, 12px lavender head */}
+            <div className="relative mx-2 h-8 min-w-0 flex-1">
+              <div className="absolute inset-x-0 top-1/2 h-[2px] -translate-y-1/2 rounded-full bg-hairline-strong">
+                <div
+                  className="h-full rounded-full bg-lav-500"
+                  style={{ width: `${total > 0 ? (position / total) * 100 : 0}%`, transition: 'width 100ms var(--ease-standard)' }}
+                />
+              </div>
+              {commitMarkers.map((m, i) => (
+                <Tooltip key={i} content={m.label}>
+                  <span
+                    className="absolute top-1/2 h-[8px] w-[2px] -translate-x-1/2 -translate-y-1/2 rounded-full"
+                    style={{
+                      left: `${total > 0 ? (m.index / total) * 100 : 0}%`,
+                      background: m.index <= position ? 'var(--lav-300)' : 'var(--thread-node)',
+                    }}
+                  />
+                </Tooltip>
+              ))}
+              <input
+                type="range"
+                min={0}
+                max={total}
+                value={position}
+                aria-label="Replay position"
+                onChange={(e) => {
+                  setPlaying(false)
+                  setPosition(Number(e.target.value))
+                }}
+                className="replay-range absolute inset-0 h-full w-full cursor-pointer appearance-none bg-transparent"
               />
             </div>
-            {commitMarkers.map((m, i) => (
-              <span
-                key={i}
-                title={m.label}
-                className="absolute top-1/2 h-2 w-2 -translate-x-1/2 -translate-y-1/2 rounded-full bg-thread-commit"
-                style={{ left: `${total > 0 ? (m.index / total) * 100 : 0}%`, boxShadow: '0 0 6px 0 #f4c95d' }}
-              />
-            ))}
-            <input
-              type="range"
-              min={0}
-              max={total}
-              value={position}
-              onChange={(e) => {
-                setPlaying(false)
-                setPosition(Number(e.target.value))
-              }}
-              className="absolute inset-0 h-full w-full cursor-pointer appearance-none bg-transparent accent-accent [&::-webkit-slider-thumb]:h-3.5 [&::-webkit-slider-thumb]:w-3.5 [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-accent-bright [&::-webkit-slider-thumb]:shadow-[0_0_10px_0_rgba(139,124,246,0.7)]"
-            />
-          </div>
 
-          <span className="w-14 shrink-0 text-right font-mono text-[11px] tabular-nums text-ink-400">
-            {position}/{total}
-          </span>
-
-          {/* segmented speed control */}
-          <div className="relative flex rounded-lg border border-white/[0.1] bg-black/25 p-0.5">
-            <span
-              className="absolute inset-y-0.5 rounded-[6px] bg-accent transition-transform duration-200 ease-[cubic-bezier(0.16,0.8,0.3,1)]"
-              style={{ width: `calc(${100 / SPEEDS.length}% - 1px)`, transform: `translateX(${SPEEDS.indexOf(speed) * 100}%)` }}
-            />
-            {SPEEDS.map((sp) => (
-              <button
-                key={sp}
-                onClick={() => setSpeed(sp)}
-                className={clsx(
-                  'relative z-10 px-2 py-1 font-mono text-[11px] transition-colors',
-                  speed === sp ? 'text-ink-950' : 'text-ink-300 hover:text-ink-100',
-                )}
-              >
-                {sp}×
-              </button>
-            ))}
-          </div>
-
-          <button
-            onClick={() => void fork()}
-            disabled={forking || position === 0}
-            className="btn-secondary shrink-0 text-xs"
-            title="Fork a new session from the currently-shown point"
-          >
-            {forking ? 'Forking…' : '⑂ Fork from here'}
-          </button>
-        </div>
-        {scrubEvent && (
-          <div className="mt-2 flex items-center gap-2 text-[11px] text-ink-400">
-            <Avatar name={s.driverName} color={s.driverAvatarColor} size="xs" />
-            <span className="truncate">
-              <span className="micro-label mr-1.5">#{position}</span>
-              {describeEvent(scrubEvent)}
+            <span className="tnum w-16 shrink-0 text-right font-mono text-small text-tertiary">
+              {position} / {total}
             </span>
+
+            <SegmentedControl
+              size="sm"
+              value={speed}
+              onChange={setSpeed}
+              options={SPEEDS.map((sp) => ({ value: sp, label: `${sp}×` }))}
+            />
+
+            <Button variant="outline" size="sm" onClick={() => void fork()} disabled={forking || position === 0}>
+              <GitFork size={13} strokeWidth={1.5} />
+              {forking ? 'Forking…' : 'Fork from here'}
+            </Button>
           </div>
-        )}
+          {position > 0 && events[position - 1] && (
+            <div className="mt-1 flex min-h-[18px] items-center gap-2 text-small text-tertiary">
+              <Avatar name={s.driverName} color={s.driverAvatarColor} size="xs" />
+              <span className="tnum font-mono text-small">#{position}</span>
+              <span className="truncate">{describeEvent(events[position - 1]!)}</span>
+            </div>
+          )}
+        </div>
       </div>
     </div>
   )
@@ -253,7 +258,7 @@ export function ReplayView() {
 function describeEvent(e: import('@loom/shared').SessionEvent): string {
   switch (e.type) {
     case 'user_message':
-      return `${truncate(e.payload.text, 70)}`
+      return truncate(e.payload.text, 70)
     case 'assistant_message':
       return `agent: ${truncate(e.payload.text.replace(/\s+/g, ' '), 70)}`
     case 'tool_call':
@@ -263,7 +268,7 @@ function describeEvent(e: import('@loom/shared').SessionEvent): string {
     case 'file_change':
       return `edited ${e.payload.path}`
     case 'commit':
-      return `📦 ${truncate(e.payload.plainExplanation, 64)}`
+      return `committed: ${truncate(e.payload.plainExplanation, 64)}`
     case 'status':
       return e.payload.note ?? e.payload.status
     case 'fork_marker':

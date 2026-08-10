@@ -1,5 +1,5 @@
 import { Navigate, Route, Routes } from 'react-router-dom'
-import { Spinner } from './components/ui'
+import { Spinner } from './components/primitives'
 import { HistoryPage } from './pages/HistoryPage'
 import { Home } from './pages/Home'
 import { Login } from './pages/Login'

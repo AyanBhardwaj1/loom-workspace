@@ -136,6 +136,29 @@ kbd {
   font-variant-numeric: tabular-nums;
 }
 
+/* ---- replay scrubber: 12px lavender head on a 2px track ---- */
+.replay-range::-webkit-slider-thumb {
+  appearance: none;
+  height: 12px;
+  width: 12px;
+  border-radius: 999px;
+  background: var(--lav-500);
+  border: 0;
+  cursor: pointer;
+  transition: background-color var(--t-micro) var(--ease-standard);
+}
+.replay-range::-webkit-slider-thumb:hover {
+  background: var(--lav-400);
+}
+.replay-range::-moz-range-thumb {
+  height: 12px;
+  width: 12px;
+  border-radius: 999px;
+  background: var(--lav-500);
+  border: 0;
+  cursor: pointer;
+}
+
 /* ---- modal / palette entrances: fade scrim, scale 0.98 → 1 panel ---- */
 .modal-scrim {
   animation: scrim-in var(--t-fast) var(--ease-standard) both;

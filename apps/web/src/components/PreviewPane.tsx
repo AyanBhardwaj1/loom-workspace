@@ -1,4 +1,6 @@
+import { ExternalLink, RotateCw, X } from 'lucide-react'
 import { useEffect, useMemo, useRef, useState } from 'react'
+import { IconButton, Pill } from './primitives'
 
 /**
  * Renders a session's (or merged main's) live-built product in a sandboxed
@@ -21,7 +23,7 @@ export function PreviewPane({
   label?: string
 }) {
   const [manualNonce, setManualNonce] = useState(0)
-  const [loadedAt, setLoadedAt] = useState<number | null>(null)
+  const [loaded, setLoaded] = useState(false)
   const iframeRef = useRef<HTMLIFrameElement>(null)
 
   const bustedSrc = useMemo(() => {
@@ -29,7 +31,7 @@ export function PreviewPane({
     return `${src}${sep}_v=${reloadKey}-${manualNonce}`
   }, [src, reloadKey, manualNonce])
 
-  // brief "updated" flash when a new commit reloads the preview
+  // brief "updated" pill when a new commit reloads the preview
   const [flash, setFlash] = useState(false)
   const firstRender = useRef(true)
   useEffect(() => {
@@ -38,56 +40,35 @@ export function PreviewPane({
       return
     }
     setFlash(true)
-    const t = setTimeout(() => setFlash(false), 1200)
+    const t = setTimeout(() => setFlash(false), 1600)
     return () => clearTimeout(t)
   }, [reloadKey])
 
   return (
-    <div className="flex h-full min-w-0 flex-col border-l border-white/[0.07] bg-white/[0.02]">
-      <div className="relative flex items-center gap-2 overflow-hidden border-b border-white/[0.07] bg-ink-950/60 px-3 py-2 backdrop-blur-xl">
-        {/* a light sweep across the header when the preview updates */}
-        {flash && (
-          <span
-            className="animate-sweep pointer-events-none absolute inset-y-0 left-0 w-1/3"
-            style={{ background: 'linear-gradient(90deg, transparent, rgba(56,224,165,0.25), transparent)' }}
-          />
-        )}
-        <span className="micro-label">▶ preview</span>
-        {label && <span className="truncate font-mono text-[11px] text-ink-400">{label}</span>}
-        {flash && (
-          <span className="rounded-full border border-thread-add/30 bg-thread-add/10 px-2 py-0.5 text-[10px] text-thread-add">
-            updated
-          </span>
-        )}
-        <div className="ml-auto flex items-center gap-1">
-          <a
-            href={src}
-            target="_blank"
-            rel="noreferrer"
-            title="Open the preview in a new tab"
-            className="btn-ghost px-2 py-1 text-xs"
-          >
-            ↗
+    <div className="flex h-full min-w-0 flex-1 flex-col border-l border-hairline bg-surface">
+      <div className="flex h-9 shrink-0 items-center gap-2 border-b border-hairline px-3">
+        <span className="text-micro uppercase tracking-[0.08em] text-tertiary">Preview</span>
+        {label && <span className="min-w-0 truncate font-mono text-code-sm text-tertiary">{label}</span>}
+        {flash && <Pill tone="ok">updated</Pill>}
+        <div className="ml-auto flex items-center gap-0.5">
+          <a href={src} target="_blank" rel="noreferrer" title="Open the preview in a new tab">
+            <IconButton label="Open in new tab" tabIndex={-1}>
+              <ExternalLink size={14} strokeWidth={1.5} />
+            </IconButton>
           </a>
-          <button
-            onClick={() => setManualNonce((n) => n + 1)}
-            title="Reload the preview"
-            className="btn-ghost px-2 py-1 text-xs"
-          >
-            ⟳
-          </button>
+          <IconButton label="Reload the preview" onClick={() => setManualNonce((n) => n + 1)}>
+            <RotateCw size={14} strokeWidth={1.5} />
+          </IconButton>
           {onClose && (
-            <button onClick={onClose} title="Hide the preview" className="btn-ghost px-2 py-1 text-xs">
-              ✕
-            </button>
+            <IconButton label="Hide the preview" onClick={onClose}>
+              <X size={14} strokeWidth={1.5} />
+            </IconButton>
           )}
         </div>
       </div>
-      <div className="relative min-h-0 flex-1 bg-white">
-        {loadedAt === null && (
-          <div className="absolute inset-0 flex items-center justify-center bg-ink-900 text-xs text-ink-400">
-            Loading preview…
-          </div>
+      <div className="relative min-h-0 flex-1 bg-inset">
+        {!loaded && (
+          <div className="absolute inset-0 flex items-center justify-center text-small text-tertiary">Loading preview…</div>
         )}
         <iframe
           ref={iframeRef}
@@ -95,8 +76,8 @@ export function PreviewPane({
           src={bustedSrc}
           title="Live product preview"
           sandbox="allow-scripts"
-          onLoad={() => setLoadedAt(Date.now())}
-          className="h-full w-full border-0"
+          onLoad={() => setLoaded(true)}
+          className="h-full w-full border-0 bg-white"
         />
       </div>
     </div>

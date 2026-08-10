@@ -1,4 +1,3 @@
-import type { CSSProperties } from 'react'
 import type { SessionEvent, SessionEventOf } from '@loom/shared'
 
 /**
@@ -10,9 +9,6 @@ import type { SessionEvent, SessionEventOf } from '@loom/shared'
  * tool_call/tool_result pairs merge into one chip, noisy status/usage events
  * are dropped, everything else becomes a rich row.
  */
-
-/** a CSS custom property carrying the semantic edge-glow color */
-export const edge = (color: string): CSSProperties => ({ ['--edge' as string]: color })
 
 export type DisplayItem =
   | { kind: 'user'; event: SessionEventOf<'user_message'> }
@@ -32,6 +28,8 @@ export interface RowActions {
   /** current viewer is the session driver (can accept/dismiss suggestions) */
   isDriver?: boolean
   onResolveSuggestion?: (suggestionId: string, decision: 'accepted' | 'dismissed') => void
+  /** lets rows link into the project (fork markers → the forked session) */
+  projectId?: string
 }
 
 export function toDisplayItems(events: SessionEvent[]): DisplayItem[] {
