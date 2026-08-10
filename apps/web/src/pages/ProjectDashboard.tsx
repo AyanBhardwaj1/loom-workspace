@@ -81,7 +81,9 @@ export function ProjectDashboard() {
       <div className="min-w-0 flex-1 overflow-y-auto px-8 py-7">
         <header className="mb-6">
           <div className="flex flex-wrap items-center gap-3">
-            <h1 className="text-2xl font-bold tracking-tight">{detail.name}</h1>
+            <h1 className="bg-gradient-to-br from-white via-white to-ink-300 bg-clip-text text-2xl font-bold tracking-tight text-transparent">
+              {detail.name}
+            </h1>
             <div className="flex -space-x-1.5">
               {detail.members.map((m) => {
                 const online = feed.presence.some((p) => p.userId === m.id)
@@ -238,13 +240,31 @@ function ModuleCard({
     >
       {/* live-session aura in the driver's color */}
       {live && (
-        <div
-          className="pointer-events-none absolute -right-10 -top-10 h-28 w-28 rounded-full opacity-60 blur-2xl"
-          style={{ background: `radial-gradient(circle, ${live.driverAvatarColor}44, transparent 70%)` }}
-        />
+        <>
+          <div
+            className="pointer-events-none absolute -right-8 -top-8 h-36 w-36 rounded-full opacity-70 blur-2xl"
+            style={{ background: `radial-gradient(circle, ${live.driverAvatarColor}55, transparent 68%)` }}
+          />
+          {/* a driver-colored filament along the top edge */}
+          <span
+            className="pointer-events-none absolute inset-x-0 top-0 h-px"
+            style={{ background: `linear-gradient(90deg, transparent, ${live.driverAvatarColor}, transparent)` }}
+          />
+        </>
       )}
-      <div className="flex items-start gap-3">
-        <span className="text-2xl drop-shadow-[0_0_10px_rgba(139,124,246,0.25)]">{module.emoji}</span>
+      <div className="relative flex items-start gap-3">
+        <span
+          className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border text-xl transition-all duration-200 group-hover:scale-105"
+          style={{
+            borderColor: live ? `${live.driverAvatarColor}55` : 'rgba(255,255,255,0.09)',
+            background: live ? `${live.driverAvatarColor}14` : 'rgba(255,255,255,0.03)',
+            boxShadow: live
+              ? `inset 0 1px 0 0 rgba(255,255,255,0.08), 0 0 18px -4px ${live.driverAvatarColor}66`
+              : 'inset 0 1px 0 0 rgba(255,255,255,0.06)',
+          }}
+        >
+          {module.emoji}
+        </span>
         <div className="min-w-0 flex-1">
           <h3 className="truncate font-semibold tracking-tight transition-colors group-hover:text-accent-soft">
             {module.name}
