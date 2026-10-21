@@ -51,15 +51,16 @@ export function NotificationBell() {
       <PopoverTrigger asChild>
         <button
           title="Notifications"
+          aria-label={unread ? 'Notifications (unread)' : 'Notifications'}
           className="relative flex h-7 w-7 shrink-0 items-center justify-center rounded text-secondary transition-colors duration-micro hover:bg-raised hover:text-primary"
         >
-          <Bell size={16} strokeWidth={1.5} />
+          <Bell size={16} strokeWidth={1.5} aria-hidden />
           {unread && <span aria-hidden className="absolute right-1 top-1 h-1.5 w-1.5 rounded-full bg-lav-500" />}
         </button>
       </PopoverTrigger>
       <PopoverContent align="end" className="w-80 p-0">
         <div className="flex h-9 items-center justify-between border-b border-hairline px-3">
-          <span className="text-micro uppercase tracking-[0.08em] text-tertiary">Notifications</span>
+          <span className="text-small font-medium text-tertiary">Notifications</span>
         </div>
         <div className="max-h-80 overflow-y-auto">
           {notifications.length === 0 ? (

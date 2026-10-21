@@ -88,7 +88,7 @@ export function CommandPalette() {
       shouldFilter
       loop
       overlayClassName="modal-scrim fixed inset-0 z-scrim bg-scrim"
-      contentClassName="palette-panel fixed left-1/2 top-[20vh] z-modal w-full max-w-[560px] -translate-x-1/2 overflow-hidden rounded-xl border border-hairline bg-overlay shadow-modal"
+      contentClassName="palette-panel fixed left-1/2 top-[20vh] z-modal w-[calc(100%-2rem)] max-w-[560px] -translate-x-1/2 overflow-hidden rounded-xl border border-hairline bg-overlay shadow-modal"
     >
       <div className="flex items-center gap-2.5 border-b border-hairline px-3.5">
         <Search size={16} strokeWidth={1.5} className="shrink-0 text-tertiary" />
@@ -97,7 +97,7 @@ export function CommandPalette() {
           className="h-11 w-full bg-transparent text-body text-primary outline-none placeholder:text-tertiary"
         />
       </div>
-      <Command.List className="max-h-[min(420px,50vh)] overflow-y-auto p-1.5">
+      <Command.List className="max-h-[min(420px,50vh)] overflow-y-auto overscroll-contain p-1.5">
         <Command.Empty className="px-3 py-8 text-center text-small text-tertiary">
           Nothing matches. Try a project, session, or action name.
         </Command.Empty>
@@ -242,7 +242,7 @@ function Group({ heading, children }: { heading: string; children: ReactNode }) 
   return (
     <Command.Group
       heading={heading}
-      className="[&_[cmdk-group-heading]]:px-2.5 [&_[cmdk-group-heading]]:pb-1 [&_[cmdk-group-heading]]:pt-2 [&_[cmdk-group-heading]]:text-micro [&_[cmdk-group-heading]]:uppercase [&_[cmdk-group-heading]]:tracking-[0.08em] [&_[cmdk-group-heading]]:text-tertiary"
+      className="[&_[cmdk-group-heading]]:px-2.5 [&_[cmdk-group-heading]]:pb-1 [&_[cmdk-group-heading]]:pt-2 [&_[cmdk-group-heading]]:text-small [&_[cmdk-group-heading]]:font-medium [&_[cmdk-group-heading]]:text-tertiary"
     >
       {children}
     </Command.Group>

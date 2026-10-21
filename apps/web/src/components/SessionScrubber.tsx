@@ -19,6 +19,8 @@ export function SessionScrubber({
 }) {
   const wrapRef = useRef<HTMLDivElement>(null)
   const [hover, setHover] = useState<{ x: number; label: string } | null>(null)
+  // keyboard cursor: null = at the live edge
+  const [cursor, setCursor] = useState<number | null>(null)
 
   const persisted = useMemo(() => events.filter((e) => e.seq !== null), [events])
   const maxSeq = persisted.length > 0 ? (persisted[persisted.length - 1]!.seq ?? 1) : 1
@@ -74,29 +76,40 @@ export function SessionScrubber({
     return Math.max(1, Math.round(frac * maxSeq))
   }
 
+  // a soft ridge that sits ON a baseline (no slanted end caps): the path
+  // starts and ends at the first/last bin centers, flush with the track
   const areaPath = (() => {
     const w = 100
     const h = 20
     const step = w / BINS
-    let d = `M 0 ${h}`
-    density.forEach((v, i) => {
-      d += ` L ${(i + 0.5) * step} ${h - v * (h - 3)}`
-    })
-    d += ` L ${w} ${h} Z`
+    const pts = density.map((v, i) => [(i + 0.5) * step, h - v * (h - 4)] as const)
+    let d = `M ${pts[0]![0]} ${h}`
+    for (const [x, y] of pts) d += ` L ${x} ${y}`
+    d += ` L ${pts[pts.length - 1]![0]} ${h} Z`
     return d
   })()
+
+  const position = cursor ?? maxSeq
+  const step = Math.max(1, Math.round(maxSeq / 20))
+  const moveTo = (seq: number) => {
+    const next = Math.max(1, Math.min(maxSeq, seq))
+    setCursor(next >= maxSeq ? null : next)
+    onPeek(next)
+  }
 
   return (
     <div className="border-t border-hairline px-6 py-1.5">
       <div
         ref={wrapRef}
         role="slider"
-        aria-label="Session timeline — click or drag to view the past"
+        aria-label="Session timeline — click, or use the arrow keys, to view the past"
         aria-valuemin={1}
         aria-valuemax={maxSeq}
+        aria-valuenow={position}
+        aria-valuetext={cursor === null ? `Live — event ${maxSeq} of ${maxSeq}` : `Event ${position} of ${maxSeq}`}
         tabIndex={0}
-        className="group relative mx-auto h-7 max-w-[760px] cursor-crosshair"
-        onClick={(e) => onPeek(seqAtX(e.clientX))}
+        className="group relative mx-auto h-6 max-w-[760px] cursor-crosshair rounded"
+        onClick={(e) => moveTo(seqAtX(e.clientX))}
         onMouseMove={(e) => {
           const rect = wrapRef.current?.getBoundingClientRect()
           if (!rect) return
@@ -106,12 +119,33 @@ export function SessionScrubber({
         }}
         onMouseLeave={() => setHover(null)}
         onKeyDown={(e) => {
-          if (e.key === 'Enter') onPeek(maxSeq)
+          const keys: Record<string, () => void> = {
+            ArrowLeft: () => moveTo(position - step),
+            ArrowDown: () => moveTo(position - step),
+            ArrowRight: () => moveTo(position + step),
+            ArrowUp: () => moveTo(position + step),
+            Home: () => moveTo(1),
+            End: () => moveTo(maxSeq),
+            Enter: () => moveTo(maxSeq),
+          }
+          const action = keys[e.key]
+          if (action) {
+            e.preventDefault()
+            action()
+          }
         }}
       >
-        <svg className="absolute inset-x-0 top-1 h-5 w-full" preserveAspectRatio="none" viewBox="0 0 100 20" aria-hidden>
-          <path d={areaPath} fill="var(--lav-fill)" stroke="var(--lav-border)" strokeWidth="0.5" />
+        <svg className="absolute inset-x-0 top-0.5 h-5 w-full" preserveAspectRatio="none" viewBox="0 0 100 20" aria-hidden>
+          <line x1="0" y1="20" x2="100" y2="20" stroke="var(--hairline-strong)" strokeWidth="1" vectorEffect="non-scaling-stroke" />
+          <path d={areaPath} fill="var(--hairline)" stroke="var(--hairline-strong)" strokeWidth="1" vectorEffect="non-scaling-stroke" />
         </svg>
+        {cursor !== null && (
+          <span
+            aria-hidden
+            className="absolute bottom-0 top-0 w-px bg-lav-500"
+            style={{ left: `${(position / maxSeq) * 100}%` }}
+          />
+        )}
         {glyphs.map((g, i) => (
           <span
             key={i}

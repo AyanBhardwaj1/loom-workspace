@@ -1,10 +1,10 @@
 import { useMemo, useState } from 'react'
-import { Link, useNavigate } from 'react-router-dom'
+import { Link } from 'react-router-dom'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { Eye, FlaskConical, Plus } from 'lucide-react'
 import type { ChangeSummary, ModuleDto, SessionSummary } from '@loom/shared'
 import { Modal } from '../components/overlay'
-import { Avatar, Button, LivePill, Pill, cn } from '../components/primitives'
+import { Avatar, Button, LivePill, PageHeader, Pill, cn } from '../components/primitives'
 import { api } from '../lib/api'
 import { timeAgo, useNow } from '../lib/time'
 import { useAuth } from '../state/auth'
@@ -23,6 +23,7 @@ export function ProjectDashboard() {
   const [moduleDesc, setModuleDesc] = useState('')
   const [moduleEmoji, setModuleEmoji] = useState('📦')
   const [creating, setCreating] = useState(false)
+  const [moduleError, setModuleError] = useState<string | null>(null)
   const [ghostBusy, setGhostBusy] = useState(false)
   const [ghostNote, setGhostNote] = useState<string | null>(null)
 
@@ -35,6 +36,7 @@ export function ProjectDashboard() {
   const createModule = async () => {
     if (!moduleName.trim() || creating) return
     setCreating(true)
+    setModuleError(null)
     try {
       await api.post(`/api/projects/${projectId}/modules`, {
         name: moduleName.trim(),
@@ -45,6 +47,8 @@ export function ProjectDashboard() {
       setModuleDialog(false)
       setModuleName('')
       setModuleDesc('')
+    } catch (err) {
+      setModuleError(err instanceof Error ? err.message : 'Could not create the module. Try again.')
     } finally {
       setCreating(false)
     }
@@ -78,25 +82,40 @@ export function ProjectDashboard() {
 
   return (
     <div className="flex min-h-0 flex-1">
-      <div className="min-w-0 flex-1 overflow-y-auto px-8 py-7">
-        <header className="mb-5">
-          <div className="flex flex-wrap items-center gap-3">
-            {/* the top bar already names the project — one quiet line is enough */}
-            <p className="text-ui text-secondary">{detail.description}</p>
-            {devMode && (
+      <div className="min-w-0 flex-1 overflow-y-auto px-4 py-7 sm:px-8">
+        <PageHeader
+          className="mb-6"
+          title={detail.name}
+          meta={
+            <span className="tnum">
+              {detail.description}
+              {activeByModule.size > 0 && (
+                <span className="ml-2 inline-flex items-center gap-1.5 text-lav-300">
+                  <span aria-hidden className="text-tertiary">·</span>
+                  {activeByModule.size} module{activeByModule.size === 1 ? '' : 's'} live
+                </span>
+              )}
+            </span>
+          }
+          actions={
+            devMode ? (
               <button
                 onClick={() => void simulateTeammate()}
                 disabled={ghostBusy}
-                className="ml-auto inline-flex h-8 items-center gap-1.5 rounded border border-dashed border-hairline px-3 text-small text-tertiary transition-colors duration-micro hover:border-hairline-hover hover:text-secondary disabled:opacity-50"
+                className="inline-flex h-8 items-center gap-1.5 rounded border border-dashed border-hairline px-3 text-small text-tertiary transition-colors duration-micro hover:border-hairline-hover hover:text-secondary disabled:opacity-50"
                 title="Dev tool — a simulated teammate starts a live session"
               >
-                <FlaskConical size={14} strokeWidth={1.5} />
+                <FlaskConical size={14} strokeWidth={1.5} aria-hidden />
                 {ghostBusy ? 'Starting…' : 'Simulate teammate'}
               </button>
-            )}
+            ) : undefined
+          }
+        />
+        {ghostNote && (
+          <div role="status" className="-mt-3 mb-5 text-small text-lav-300">
+            {ghostNote}
           </div>
-          {ghostNote && <div className="mt-2 text-small text-lav-300">{ghostNote}</div>}
-        </header>
+        )}
 
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3">
           {detail.modules.map((m) => (
@@ -125,7 +144,7 @@ export function ProjectDashboard() {
       <aside className="hidden w-80 shrink-0 flex-col border-l border-hairline lg:flex">
         <div className="flex h-10 shrink-0 items-center gap-2 border-b border-hairline px-4">
           <span className="h-1.5 w-1.5 rounded-full bg-ok" aria-hidden />
-          <span className="text-micro uppercase tracking-[0.08em] text-tertiary">Recent changes</span>
+          <span className="text-small font-medium text-tertiary">Recent changes</span>
         </div>
         <div className="min-h-0 flex-1 overflow-y-auto">
           {recentChanges.length === 0 ? (
@@ -141,7 +160,7 @@ export function ProjectDashboard() {
             recentChanges.map((c, i) => (
               <Link
                 key={c.id}
-                to={`/p/${projectId}/history`}
+                to={`/p/${projectId}/history?change=${c.id}`}
                 className={cn(
                   'block px-4 py-3 transition-colors duration-micro hover:bg-raised',
                   i > 0 && 'border-t border-hairline',
@@ -161,11 +180,21 @@ export function ProjectDashboard() {
       </aside>
 
       <Modal open={moduleDialog} onClose={() => setModuleDialog(false)} title="New module">
-        <div className="space-y-3">
-          <div className="flex flex-wrap gap-1.5">
+        <form
+          className="space-y-3"
+          onSubmit={(ev) => {
+            ev.preventDefault()
+            void createModule()
+          }}
+        >
+          <div role="radiogroup" aria-label="Module icon" className="flex flex-wrap gap-1.5">
             {EMOJI_CHOICES.map((e) => (
               <button
                 key={e}
+                type="button"
+                role="radio"
+                aria-checked={moduleEmoji === e}
+                aria-label={`Icon ${e}`}
                 onClick={() => setModuleEmoji(e)}
                 className={cn(
                   'flex h-9 w-9 items-center justify-center rounded border text-h4 transition-colors duration-micro',
@@ -176,29 +205,43 @@ export function ProjectDashboard() {
               </button>
             ))}
           </div>
-          <input
-            className="loom-input"
-            placeholder="Module name (e.g. Search, Billing…)"
-            value={moduleName}
-            onChange={(e) => setModuleName(e.target.value)}
-            autoFocus
-          />
-          <textarea
-            className="loom-input resize-none"
-            rows={2}
-            placeholder="One line on what this part of the product does"
-            value={moduleDesc}
-            onChange={(e) => setModuleDesc(e.target.value)}
-          />
+          <label className="block">
+            <span className="mb-1 block text-small font-medium text-secondary">Name</span>
+            <input
+              className="loom-input"
+              name="module-name"
+              autoComplete="off"
+              placeholder="e.g. Search, Billing…"
+              value={moduleName}
+              onChange={(e) => setModuleName(e.target.value)}
+              autoFocus
+            />
+          </label>
+          <label className="block">
+            <span className="mb-1 block text-small font-medium text-secondary">What it does</span>
+            <textarea
+              className="loom-input resize-none"
+              name="module-description"
+              rows={2}
+              placeholder="One line on this part of the product…"
+              value={moduleDesc}
+              onChange={(e) => setModuleDesc(e.target.value)}
+            />
+          </label>
+          {moduleError && (
+            <div role="alert" className="text-small text-danger">
+              {moduleError}
+            </div>
+          )}
           <div className="flex justify-end gap-2">
             <Button variant="ghost" onClick={() => setModuleDialog(false)}>
               Cancel
             </Button>
-            <Button variant="primary" onClick={() => void createModule()} disabled={creating || !moduleName.trim()}>
+            <Button type="submit" variant="primary" disabled={creating || !moduleName.trim()}>
               {creating ? 'Creating…' : 'Create module'}
             </Button>
           </div>
-        </div>
+        </form>
       </Modal>
     </div>
   )
@@ -224,12 +267,11 @@ function ModuleCard({
   watcherCount: number
   now: number
 }) {
-  const navigate = useNavigate()
   const lastLine = live ? (gist && gist.at >= (live.lastEventAt ?? '') ? gist.gist : 'in a live session') : null
   return (
-    <button
+    <Link
       data-testid={`module-card-${module.name}`}
-      onClick={() => navigate(`/p/${projectId}/m/${module.id}`)}
+      to={`/p/${projectId}/m/${module.id}`}
       className={cn(
         'group relative flex min-h-[8.5rem] flex-col overflow-hidden rounded-lg border bg-surface p-5 text-left transition-colors duration-fast ease-standard',
         live ? 'border-lav-border shadow-live' : 'border-hairline hover:border-hairline-hover hover:bg-raised',
@@ -247,7 +289,7 @@ function ModuleCard({
           {module.emoji}
         </span>
         <div className="min-w-0 flex-1">
-          <h3 className="truncate text-h4 text-primary">{module.name}</h3>
+          <h2 className="truncate text-h4 text-primary">{module.name}</h2>
           <p className="mt-0.5 line-clamp-1 text-small text-tertiary">{module.description}</p>
         </div>
         {live ? <LivePill /> : <Pill tone={STATUS_TONE[module.status]}>{module.status}</Pill>}
@@ -278,9 +320,9 @@ function ModuleCard({
             </div>
           </>
         ) : (
-          <div className="text-small text-tertiary">No live session — click to start one</div>
+          <div className="text-small text-tertiary">No live session — open to start one</div>
         )}
       </div>
-    </button>
+    </Link>
   )
 }

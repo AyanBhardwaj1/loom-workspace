@@ -1,3 +1,4 @@
+import { toast } from 'sonner'
 import NumberFlow from '@number-flow/react'
 import { ChevronsLeft, ChevronsRight, GitFork, X } from 'lucide-react'
 import { useEffect, useMemo, useState } from 'react'
@@ -64,8 +65,9 @@ export function SpectatorSidebar({
     try {
       const res = await api.post<{ session: { id: string } }>(`/api/sessions/${selectedId}/fork`, { atEventId })
       navigate(`/p/${projectId}/s/${res.session.id}`)
-    } catch {
+    } catch (err) {
       setForking(false)
+      toast(err instanceof Error ? `Fork failed: ${err.message}` : 'Fork failed. Try again.')
     }
   }
 
@@ -97,7 +99,7 @@ export function SpectatorSidebar({
             <span className="min-w-0 flex-1 truncate text-small text-tertiary">{selected.title}</span>
           </>
         ) : (
-          <span className="text-micro uppercase tracking-[0.08em] text-tertiary">Spectate</span>
+          <span className="text-small font-medium text-tertiary">Spectate</span>
         )}
         <IconButton label="Collapse to rail" onClick={() => setCollapsed(true)} className="ml-auto">
           <ChevronsRight size={15} strokeWidth={1.5} />
@@ -119,6 +121,7 @@ export function SpectatorSidebar({
               <select
                 value={selectedId ?? ''}
                 onChange={(e) => setSelectedId(e.target.value)}
+                aria-label="Live session to spectate"
                 className="loom-input mb-2 py-1.5 text-small"
               >
                 {candidates.map((s) => (
@@ -130,7 +133,7 @@ export function SpectatorSidebar({
             )}
             <div className="flex items-center gap-2 text-small text-secondary">
               <StatusDot tone={stream.agentStatus === 'thinking' || stream.agentStatus === 'running_tools' ? 'accent' : 'idle'} />
-              {stream.agentStatus === 'thinking' ? 'thinking' : stream.agentStatus === 'running_tools' ? 'working' : 'idle'}
+              {stream.agentStatus === 'thinking' ? 'Thinking…' : stream.agentStatus === 'running_tools' ? 'Working…' : 'Idle'}
               {watcherCount > 0 && (
                 <span className="tnum ml-auto inline-flex items-center gap-1 font-mono text-small text-tertiary">
                   <NumberFlow value={watcherCount} transformTiming={NUMBER_TIMING} spinTiming={NUMBER_TIMING} /> watching

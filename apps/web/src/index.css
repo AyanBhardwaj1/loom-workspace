@@ -11,6 +11,24 @@ body,
   height: 100%;
 }
 
+/* touch: no double-tap zoom delay, no grey flash on tap */
+html {
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
+}
+/* desktop pointers: no rubber-band on the app shell (touch keeps pull-to-refresh) */
+@media (pointer: fine) {
+  html {
+    overscroll-behavior: none;
+  }
+}
+
+h1,
+h2,
+h3 {
+  text-wrap: balance;
+}
+
 /*
  * The canvas: the living MeshGradient mounts behind the root (see
  * LoomCanvas.tsx). The body carries the flat charcoal + the CSS radial
@@ -52,11 +70,11 @@ body {
   background: rgba(156, 143, 242, 0.3);
 }
 
-/* ---- the one focus treatment: 1px lavender ring, 2px offset ---- */
+/* ---- the one focus treatment: 1px lavender ring, 2px offset ----
+   (outlines follow each element's own radius — never reshape it) */
 :focus-visible {
   outline: 1px solid var(--lav-500);
   outline-offset: 2px;
-  border-radius: 6px;
 }
 
 /* ---- inline code inside chat prose ---- */

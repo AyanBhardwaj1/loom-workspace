@@ -51,13 +51,13 @@ export function SharedView() {
         <Wordmark height={16} className="text-primary" />
         <Pill tone="accent">Shared</Pill>
         <div className="min-w-0">
-          <div className="truncate text-ui font-medium text-primary">{s.title}</div>
+          <h1 className="truncate text-ui font-medium text-primary">{s.title}</h1>
           <div className="truncate text-small text-tertiary">
             {detail.moduleName} · driven by {s.driverName} · read-only
           </div>
         </div>
       </header>
-      <div className="mx-auto flex min-h-0 w-full max-w-[860px] flex-1 flex-col">
+      <main id="main" className="mx-auto flex min-h-0 w-full max-w-[860px] flex-1 flex-col">
         <ChatLog
           events={detail.events}
           streamingText=""
@@ -67,7 +67,7 @@ export function SharedView() {
           ended={s.status === 'ended'}
           emptyHint="Nothing was recorded in this session."
         />
-      </div>
+      </main>
     </div>
   )
 }

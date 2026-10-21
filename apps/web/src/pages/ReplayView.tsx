@@ -1,11 +1,12 @@
 import { Check, GitFork, Link2, Pause, Play, SkipBack, SkipForward } from 'lucide-react'
 import { useEffect, useMemo, useRef, useState } from 'react'
+import { toast } from 'sonner'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import type { AgentActivityStatus } from '@loom/shared'
 import { ChatLog } from '../components/ChatLog'
 import { Wordmark } from '../components/Wordmark'
 import { Tooltip } from '../components/overlay'
-import { Avatar, Button, IconButton, Pill, SegmentedControl, Spinner } from '../components/primitives'
+import { Avatar, Button, IconButton, Pill, SegmentedControl, Spinner, buttonVariants } from '../components/primitives'
 import { api } from '../lib/api'
 import { useReplayStream } from '../state/useReplayStream'
 
@@ -60,6 +61,8 @@ export function ReplayView() {
         setPlaying(false)
         setPosition((p) => Math.min(total, p + 1))
       } else if (e.key === ' ') {
+        // Space on a focused button or link must activate it, not toggle playback
+        if (e.target instanceof HTMLElement && e.target.closest('button, a, [role="slider"]')) return
         e.preventDefault()
         setPlaying((v) => (position >= total ? v : !v))
       }
@@ -103,8 +106,9 @@ export function ReplayView() {
       })
       const pid = detail?.session.projectId
       navigate(pid ? `/p/${pid}/s/${res.session.id}` : `/`)
-    } catch {
+    } catch (err) {
       setForking(false)
+      toast(err instanceof Error ? `Fork failed: ${err.message}` : 'Fork failed. Try again.')
     }
   }
 
@@ -114,7 +118,7 @@ export function ReplayView() {
       setCopied(true)
       setTimeout(() => setCopied(false), 2000)
     } catch {
-      /* clipboard blocked */
+      toast('Could not copy — your browser blocked clipboard access')
     }
   }
 
@@ -129,8 +133,8 @@ export function ReplayView() {
     return (
       <div className="flex h-full flex-col items-center justify-center gap-3 text-ui text-secondary">
         <div>{error ?? 'Replay not found.'}</div>
-        <Link to="/">
-          <Button>Home</Button>
+        <Link to="/" className={buttonVariants()}>
+          Home
         </Link>
       </div>
     )
@@ -142,30 +146,30 @@ export function ReplayView() {
   return (
     <div className="flex h-full flex-col">
       <header className="flex h-12 shrink-0 items-center gap-3 border-b border-hairline px-4">
-        <Link to="/" className="text-primary transition-colors duration-micro hover:text-lav-300" aria-label="Home">
+        <Link to="/" className="shrink-0 text-primary transition-colors duration-micro hover:text-lav-300" aria-label="Home">
           <Wordmark height={16} />
         </Link>
         <Pill tone="accent">Replay</Pill>
         <div className="min-w-0">
-          <div className="truncate text-ui font-medium text-primary">{s.title}</div>
+          <h1 className="truncate text-ui font-medium text-primary">{s.title}</h1>
           <div className="truncate text-small text-tertiary">
             {detail.moduleName} · driven by {s.driverName}
           </div>
         </div>
         <div className="ml-auto flex items-center gap-2">
           <Button variant="ghost" size="sm" onClick={() => void copyLink()}>
-            {copied ? <Check size={14} strokeWidth={1.5} className="text-ok" /> : <Link2 size={14} strokeWidth={1.5} />}
-            {copied ? 'Copied' : 'Copy replay link'}
+            {copied ? <Check size={14} strokeWidth={1.5} className="text-ok" aria-hidden /> : <Link2 size={14} strokeWidth={1.5} aria-hidden />}
+            <span className="hidden sm:inline">{copied ? 'Copied' : 'Copy replay link'}</span>
+            <span className="sm:hidden">{copied ? 'Copied' : 'Copy link'}</span>
           </Button>
-          <Link to={`/p/${s.projectId}/s/${s.id}`}>
-            <Button variant="ghost" size="sm">
-              Open live session →
-            </Button>
+          <Link to={`/p/${s.projectId}/s/${s.id}`} className={buttonVariants({ variant: 'ghost', size: 'sm' })}>
+            <span className="hidden sm:inline">Open live session</span>
+            <span className="sm:hidden">Live</span> →
           </Link>
         </div>
       </header>
 
-      <div className="mx-auto flex min-h-0 w-full max-w-[860px] flex-1 flex-col">
+      <main id="main" className="mx-auto flex min-h-0 w-full max-w-[860px] flex-1 flex-col">
         <ChatLog
           events={revealed}
           streamingText=""
@@ -178,27 +182,29 @@ export function ReplayView() {
 
         {/* the transport — 48px deck above where the composer would sit */}
         <div className="shrink-0 border-t border-hairline px-4 py-2.5">
-          <div className="flex h-9 items-center gap-2">
+          {/* phones: the scrubber takes its own full-width row above the controls */}
+          <div className="flex flex-wrap items-center gap-2 sm:h-9 sm:flex-nowrap">
             <IconButton label="Jump to start" onClick={() => setPosition(0)}>
               <SkipBack size={15} strokeWidth={1.5} />
             </IconButton>
             <button
               onClick={() => (playing ? setPlaying(false) : play())}
               title={playing ? 'Pause (space)' : 'Play (space)'}
+              aria-label={playing ? 'Pause' : 'Play'}
               className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-lav-500 text-on-accent transition-colors duration-micro hover:bg-lav-400"
             >
-              {playing ? <Pause size={15} strokeWidth={2} /> : <Play size={15} strokeWidth={2} className="ml-0.5" />}
+              {playing ? <Pause size={15} strokeWidth={2} aria-hidden /> : <Play size={15} strokeWidth={2} className="ml-0.5" aria-hidden />}
             </button>
             <IconButton label="Jump to end" onClick={() => setPosition(total)}>
               <SkipForward size={15} strokeWidth={1.5} />
             </IconButton>
 
             {/* scrubber: 2px track, commit notches, 12px lavender head */}
-            <div className="relative mx-2 h-8 min-w-0 flex-1">
+            <div className="relative order-first h-8 min-w-0 basis-full sm:order-none sm:mx-2 sm:flex-1 sm:basis-auto">
               <div className="absolute inset-x-0 top-1/2 h-[2px] -translate-y-1/2 rounded-full bg-hairline-strong">
                 <div
-                  className="h-full rounded-full bg-lav-500"
-                  style={{ width: `${total > 0 ? (position / total) * 100 : 0}%`, transition: 'width 100ms var(--ease-standard)' }}
+                  className="h-full origin-left rounded-full bg-lav-500 transition-transform duration-micro ease-standard"
+                  style={{ transform: `scaleX(${total > 0 ? position / total : 0})` }}
                 />
               </div>
               {commitMarkers.map((m, i) => (
@@ -232,13 +238,14 @@ export function ReplayView() {
 
             <SegmentedControl
               size="sm"
+              ariaLabel="Playback speed"
               value={speed}
               onChange={setSpeed}
               options={SPEEDS.map((sp) => ({ value: sp, label: `${sp}×` }))}
             />
 
             <Button variant="outline" size="sm" onClick={() => void fork()} disabled={forking || position === 0}>
-              <GitFork size={13} strokeWidth={1.5} />
+              <GitFork size={13} strokeWidth={1.5} aria-hidden />
               {forking ? 'Forking…' : 'Fork from here'}
             </Button>
           </div>
@@ -250,7 +257,7 @@ export function ReplayView() {
             </div>
           )}
         </div>
-      </div>
+      </main>
     </div>
   )
 }

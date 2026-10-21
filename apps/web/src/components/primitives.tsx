@@ -1,8 +1,21 @@
 import { cva, type VariantProps } from 'class-variance-authority'
 import { clsx, type ClassValue } from 'clsx'
-import { forwardRef, type ButtonHTMLAttributes, type HTMLAttributes, type ReactNode } from 'react'
-import { twMerge } from 'tailwind-merge'
+import { forwardRef, type ButtonHTMLAttributes, type HTMLAttributes, type KeyboardEvent, type ReactNode } from 'react'
+import { extendTailwindMerge } from 'tailwind-merge'
 import { WovenMark } from './Wordmark'
+
+/**
+ * tailwind-merge must know the role-named type scale: otherwise it reads
+ * `text-ui` as a text COLOR and silently drops the real color beside it
+ * (every primary button lost its dark on-accent text that way).
+ */
+const twMerge = extendTailwindMerge({
+  extend: {
+    classGroups: {
+      'font-size': [{ text: ['micro', 'small', 'ui', 'body', 'h4', 'h3', 'h2', 'display', 'code', 'code-sm'] }],
+    },
+  },
+})
 
 export function cn(...inputs: ClassValue[]): string {
   return twMerge(clsx(inputs))
@@ -12,8 +25,8 @@ export function cn(...inputs: ClassValue[]): string {
  * Button — primary (lavender, dark text) / outline / ghost / danger
  * Routine interaction is CSS-only and nearly instant (--t-micro/fast).
  * ------------------------------------------------------------------------- */
-const buttonVariants = cva(
-  'inline-flex select-none items-center justify-center gap-1.5 whitespace-nowrap rounded font-medium transition-colors duration-micro ease-standard disabled:pointer-events-none disabled:text-disabled',
+export const buttonVariants = cva(
+  'inline-flex select-none items-center justify-center gap-1.5 whitespace-nowrap rounded font-medium transition-[color,background-color,border-color,transform] duration-micro ease-standard active:translate-y-px disabled:pointer-events-none disabled:text-disabled',
   {
     variants: {
       variant: {
@@ -56,7 +69,7 @@ export const IconButton = forwardRef<
       aria-label={label}
       title={label}
       className={cn(
-        'inline-flex h-7 w-7 shrink-0 items-center justify-center rounded text-secondary transition-colors duration-micro hover:bg-raised hover:text-primary disabled:pointer-events-none disabled:text-disabled',
+        'inline-flex h-7 w-7 shrink-0 items-center justify-center rounded text-secondary transition-[color,background-color,transform] duration-micro hover:bg-raised hover:text-primary active:translate-y-px disabled:pointer-events-none disabled:text-disabled [@media(pointer:coarse)]:h-10 [@media(pointer:coarse)]:w-10',
         className,
       )}
       {...props}
@@ -67,14 +80,15 @@ export const IconButton = forwardRef<
 /* ----------------------------------------------------------------------------
  * Pills & chips
  * ------------------------------------------------------------------------- */
-export function LivePill({ label = 'LIVE', className }: { label?: string; className?: string }) {
+export function LivePill({ label = 'Live', className }: { label?: string; className?: string }) {
   return (
     <span
       className={cn(
-        'inline-flex h-[18px] items-center rounded-full bg-lav-500 px-2 text-micro uppercase tracking-[0.08em] text-on-accent',
+        'inline-flex h-5 items-center gap-1.5 rounded-full bg-lav-500 pl-1.5 pr-2 text-small font-medium text-on-accent',
         className,
       )}
     >
+      <span aria-hidden className="h-1.5 w-1.5 animate-soft-pulse rounded-full bg-on-accent" />
       {label}
     </span>
   )
@@ -99,12 +113,12 @@ export function Pill({
   return (
     <span
       className={cn(
-        'inline-flex h-[18px] items-center gap-1 rounded-full border px-2 text-micro uppercase tracking-[0.08em]',
+        'inline-flex h-5 items-center gap-1 whitespace-nowrap rounded-full border px-2 text-small',
         tones[tone],
         className,
       )}
     >
-      {children}
+      {typeof children === 'string' ? children.charAt(0).toUpperCase() + children.slice(1) : children}
     </span>
   )
 }
@@ -122,6 +136,45 @@ export function MonoChip({ children, className, title }: { children: ReactNode; 
     >
       {children}
     </span>
+  )
+}
+
+/* ----------------------------------------------------------------------------
+ * Page structure — one heading voice for every screen
+ * ------------------------------------------------------------------------- */
+/** Sentence-case section label (replaces the old all-caps micro labels). */
+export function SectionLabel({
+  children,
+  className,
+  as: Tag = 'h2',
+}: {
+  children: ReactNode
+  className?: string
+  as?: 'h2' | 'h3' | 'div'
+}) {
+  return <Tag className={cn('flex items-center gap-2 text-small font-medium text-tertiary', className)}>{children}</Tag>
+}
+
+/** Page title block: display heading, one line of context, actions on the right. */
+export function PageHeader({
+  title,
+  meta,
+  actions,
+  className,
+}: {
+  title: ReactNode
+  meta?: ReactNode
+  actions?: ReactNode
+  className?: string
+}) {
+  return (
+    <header className={cn('flex flex-wrap items-end justify-between gap-x-6 gap-y-3', className)}>
+      <div className="min-w-0">
+        <h1 className="text-balance text-display text-primary">{title}</h1>
+        {meta && <div className="mt-1 text-ui text-secondary">{meta}</div>}
+      </div>
+      {actions && <div className="flex shrink-0 items-center gap-2">{actions}</div>}
+    </header>
   )
 }
 
@@ -217,20 +270,35 @@ export function SegmentedControl<T extends string>({
   onChange,
   size = 'md',
   className,
+  ariaLabel,
 }: {
   options: Array<{ value: T; label: ReactNode; title?: string }>
   value: T
   onChange: (v: T) => void
   size?: 'sm' | 'md'
   className?: string
+  /** names the group for assistive tech ("Provider", "Effort"…) */
+  ariaLabel?: string
 }) {
   const idx = Math.max(
     0,
     options.findIndex((o) => o.value === value),
   )
+  // radio-group keyboard model: arrows move AND select; one tab stop for the group
+  const onKeyDown = (e: KeyboardEvent<HTMLDivElement>) => {
+    const delta = e.key === 'ArrowRight' || e.key === 'ArrowDown' ? 1 : e.key === 'ArrowLeft' || e.key === 'ArrowUp' ? -1 : 0
+    if (!delta) return
+    e.preventDefault()
+    const next = options[(idx + delta + options.length) % options.length]!
+    onChange(next.value)
+    const buttons = e.currentTarget.querySelectorAll<HTMLButtonElement>('[role="radio"]')
+    buttons[(idx + delta + options.length) % options.length]?.focus()
+  }
   return (
     <div
-      role="tablist"
+      role="radiogroup"
+      aria-label={ariaLabel}
+      onKeyDown={onKeyDown}
       className={cn('relative inline-flex rounded border border-hairline bg-inset p-0.5', className)}
     >
       <span
@@ -244,13 +312,14 @@ export function SegmentedControl<T extends string>({
       {options.map((o) => (
         <button
           key={o.value}
-          role="tab"
+          role="radio"
           type="button"
-          aria-selected={o.value === value}
+          aria-checked={o.value === value}
+          tabIndex={o.value === value ? 0 : -1}
           title={o.title}
           onClick={() => onChange(o.value)}
           className={cn(
-            'relative z-0 flex-1 whitespace-nowrap rounded-[4px] font-medium transition-colors duration-micro',
+            'relative z-0 min-w-0 flex-1 truncate whitespace-nowrap rounded-[4px] font-medium transition-colors duration-micro',
             size === 'sm' ? 'px-2 py-0.5 text-small' : 'px-2.5 py-1 text-small',
             o.value === value ? 'text-on-accent' : 'text-secondary hover:text-primary',
           )}

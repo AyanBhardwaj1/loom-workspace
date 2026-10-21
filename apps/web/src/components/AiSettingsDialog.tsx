@@ -148,6 +148,7 @@ function ModelCombobox({
       <button
         type="button"
         role="combobox"
+        aria-label={`Model: ${value || 'default'}`}
         aria-expanded={open}
         onClick={() => onOpenChange(!open)}
         className="loom-input flex items-center justify-between gap-2 text-left font-mono text-code"
@@ -263,6 +264,7 @@ function ReasoningControl({
       <SegmentedControl
         size="sm"
         className="w-full"
+        ariaLabel="Reasoning effort"
         value={value ?? 'auto'}
         onChange={(v) => onChange(v === 'auto' ? null : (v as ReasoningSetting))}
         options={options}
@@ -333,6 +335,7 @@ export function AiSettingsDialog({ open, onClose }: { open: boolean; onClose: ()
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [saved, setSaved] = useState(false)
+  const [confirmMock, setConfirmMock] = useState(false)
 
   // a non-OpenRouter base URL means the catalog (and its reasoning ladders)
   // doesn't apply — fall back to the plain text field
@@ -441,6 +444,7 @@ export function AiSettingsDialog({ open, onClose }: { open: boolean; onClose: ()
         <SegmentedControl
           value={provider}
           onChange={setProvider}
+          ariaLabel="Provider"
           className="w-full"
           options={(Object.keys(PROVIDER_INFO) as AiProviderKind[]).map((p) => ({
             value: p,
@@ -458,15 +462,18 @@ export function AiSettingsDialog({ open, onClose }: { open: boolean; onClose: ()
                 placeholder={keyOnFile ? `Saved (${settings.data?.maskedKey}) — paste to replace` : PROVIDER_INFO[provider].keyPlaceholder}
                 value={apiKey}
                 onChange={(e) => setApiKey(e.target.value)}
+                name="api-key"
                 autoComplete="off"
+                spellCheck={false}
               />
               <button
                 type="button"
                 onClick={() => setShowKey((v) => !v)}
                 title={showKey ? 'Hide the key' : 'Reveal the key'}
+                aria-label={showKey ? 'Hide the key' : 'Reveal the key'}
                 className="absolute right-2 top-1/2 -translate-y-1/2 text-tertiary transition-colors duration-micro hover:text-secondary"
               >
-                {showKey ? <EyeOff size={14} strokeWidth={1.5} /> : <Eye size={14} strokeWidth={1.5} />}
+                {showKey ? <EyeOff size={14} strokeWidth={1.5} aria-hidden /> : <Eye size={14} strokeWidth={1.5} aria-hidden />}
               </button>
             </span>
           </label>
@@ -509,6 +516,10 @@ export function AiSettingsDialog({ open, onClose }: { open: boolean; onClose: ()
               <>
                 <input
                   className="loom-input font-mono text-code"
+                  aria-label="Model id"
+                  name="model"
+                  autoComplete="off"
+                  spellCheck={false}
                   placeholder={PROVIDER_INFO[provider].modelPlaceholder}
                   value={model}
                   onChange={(e) => setModel(e.target.value)}
@@ -545,6 +556,10 @@ export function AiSettingsDialog({ open, onClose }: { open: boolean; onClose: ()
               <span className="mb-1 block text-small font-medium text-secondary">Base URL</span>
               <input
                 className="loom-input font-mono text-code"
+                type="url"
+                name="base-url"
+                autoComplete="off"
+                spellCheck={false}
                 placeholder="https://openrouter.ai/api/v1 (default; any OpenAI-compatible endpoint)"
                 value={baseUrl}
                 onChange={(e) => setBaseUrl(e.target.value)}
@@ -558,9 +573,13 @@ export function AiSettingsDialog({ open, onClose }: { open: boolean; onClose: ()
           )}
         </div>
 
-        {error && <div className="rounded border border-danger-border bg-danger-fill px-3 py-2 text-small text-danger">{error}</div>}
+        {error && (
+          <div role="alert" className="rounded border border-danger-border bg-danger-fill px-3 py-2 text-small text-danger">
+            {error}
+          </div>
+        )}
         {saved && (
-          <div className="rounded border border-ok-border bg-ok-fill px-3 py-2 text-small text-ok">
+          <div role="status" className="rounded border border-ok-border bg-ok-fill px-3 py-2 text-small text-ok">
             Verified and active — every session now uses these settings.
           </div>
         )}
@@ -575,15 +594,22 @@ export function AiSettingsDialog({ open, onClose }: { open: boolean; onClose: ()
             {busy ? <Spinner className="h-4 w-4" /> : keyOnFile && !apiKey.trim() ? 'Save changes' : 'Save key'}
           </Button>
           {current && current.mode !== 'mock' && current.source === 'runtime' && (
-            <Button variant="ghost" size="md" onClick={() => void useMock()} disabled={busy}>
-              Use mock instead
+            <Button
+              variant={confirmMock ? 'danger' : 'ghost'}
+              size="md"
+              onClick={() => (confirmMock ? void useMock() : setConfirmMock(true))}
+              onBlur={() => setConfirmMock(false)}
+              disabled={busy}
+            >
+              {/* forgetting the key is a second, explicit click */}
+              {confirmMock ? 'Forget key — sure?' : 'Use mock instead'}
             </Button>
           )}
         </div>
 
         <p className="text-small leading-relaxed text-tertiary">
-          Verified with the provider before saving, stored in this {BRAND} server's own database, and used only to call
-          your chosen provider. It never reaches other users' browsers — teammates just see the agent get smarter.
+          Verified with the provider before saving, stored in this {BRAND} server’s own database, and used only to call
+          your chosen provider. It never reaches other users’ browsers — teammates just see the agent get smarter.
         </p>
       </div>
     </Modal>

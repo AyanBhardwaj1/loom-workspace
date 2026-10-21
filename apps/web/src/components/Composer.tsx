@@ -80,7 +80,7 @@ export function Composer({
       <div className="mx-auto max-w-[760px]">
         {queue.length > 0 && (
           <div className="mb-2 flex flex-wrap items-center gap-1.5">
-            <span className="text-micro uppercase tracking-[0.08em] text-tertiary">Queued</span>
+            <span className="text-small font-medium text-tertiary">Queued</span>
             {queue.map((q, i) => (
               <span
                 key={i}
@@ -91,8 +91,9 @@ export function Composer({
                   onClick={() => setQueue((qq) => qq.filter((_, j) => j !== i))}
                   className="text-warn transition-opacity duration-micro hover:opacity-70"
                   title="Remove from queue"
+                  aria-label={`Remove “${q.slice(0, 40)}” from the queue`}
                 >
-                  <X size={11} strokeWidth={2} />
+                  <X size={11} strokeWidth={2} aria-hidden />
                 </button>
               </span>
             ))}
@@ -107,13 +108,16 @@ export function Composer({
             className="pointer-events-none absolute -inset-px rounded-lg opacity-0"
             style={{ outline: '1px solid var(--lav-500)', outlineOffset: 2 }}
           />
-          <div className="flex items-end gap-2 rounded-lg border border-hairline bg-raised p-2 transition-colors duration-fast focus-within:border-hairline-hover">
+          <div className="flex items-end gap-2 rounded-lg border border-hairline bg-raised p-2 transition-colors duration-fast focus-within:border-lav-border">
             <textarea
               ref={textareaRef}
+              name="message"
+              aria-label="Message the agent"
               value={text}
               onChange={(e) => setText(e.target.value)}
               onKeyDown={(e) => {
-                if (e.key === 'Enter' && !e.shiftKey) {
+                // Enter confirms an IME composition (CJK input) — it must not send
+                if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) {
                   e.preventDefault()
                   submit()
                 }
@@ -126,9 +130,10 @@ export function Composer({
               <button
                 onClick={() => wsClient.stop(sessionId)}
                 title="Stop the agent — partial work is still committed"
+                aria-label="Stop the agent"
                 className="flex h-7 w-7 shrink-0 items-center justify-center rounded border border-hairline text-secondary transition-colors duration-micro hover:border-danger-border hover:text-danger"
               >
-                <Square size={12} strokeWidth={2} fill="currentColor" />
+                <Square size={12} strokeWidth={2} fill="currentColor" aria-hidden />
               </button>
             )}
             <button
@@ -140,17 +145,20 @@ export function Composer({
               )}
             >
               {busy ? 'Queue' : 'Send'}
-              {!busy && <ArrowUp size={13} strokeWidth={2} />}
+              {!busy && <ArrowUp size={13} strokeWidth={2} aria-hidden />}
             </button>
           </div>
         </div>
 
-        <div className={clsx('mt-1.5 flex min-h-[18px] items-center gap-2 text-small', notice ? 'text-warn' : 'text-tertiary')}>
+        <div
+          aria-live="polite"
+          className={clsx('mt-1.5 flex min-h-[18px] items-center gap-2 text-small', notice ? 'text-warn' : 'text-tertiary')}
+        >
           {busy && <Spinner className="h-3 w-3" />}
           {notice ? (
             <span>{notice}</span>
           ) : busy ? (
-            <span className="font-mono text-code-sm">agent is working</span>
+            <span>Agent is working…</span>
           ) : queue.length > 0 ? (
             <span className="tnum">
               {queue.length} message{queue.length === 1 ? '' : 's'} queued — each sends when the agent is free

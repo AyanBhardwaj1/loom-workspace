@@ -1,6 +1,7 @@
-import { ChevronDown, ChevronRight, FileText, GitMerge, MonitorPlay } from 'lucide-react'
+import { ArrowLeft, ChevronDown, ChevronRight, FileText, GitMerge, MonitorPlay } from 'lucide-react'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
+import { useSearchParams } from 'react-router-dom'
 import { clsx } from 'clsx'
 import type { BranchInfo, ChangeSummary, MergeResult } from '@loom/shared'
 import { UnifiedDiffView } from '../components/EventRow'
@@ -11,6 +12,7 @@ import { Avatar, Button, CardSkeleton, EmptyState, MonoChip, SegmentedControl, S
 import { api } from '../lib/api'
 import { momentMergeJoin } from '../lib/choreography'
 import { timeAgo, useNow } from '../lib/time'
+import { useMediaQuery } from '../lib/useMediaQuery'
 import { useProject } from './ProjectShell'
 
 type Lens = 'simple' | 'technical'
@@ -24,7 +26,16 @@ export function HistoryPage() {
   const { projectId, feed } = useProject()
   const now = useNow(15_000)
   const [lens, setLens] = useState<Lens>('simple')
-  const [selectedId, setSelectedId] = useState<string | null>(null)
+  // the open change lives in the URL: deep-linkable, and Back closes it on phones
+  const [params, setParams] = useSearchParams()
+  const selectedId = params.get('change')
+  const setSelectedId = (id: string | null) =>
+    setParams((prev) => {
+      const next = new URLSearchParams(prev)
+      if (id) next.set('change', id)
+      else next.delete('change')
+      return next
+    })
   const [mainPreview, setMainPreview] = useState(false)
 
   const changesQuery = useQuery({
@@ -39,7 +50,9 @@ export function HistoryPage() {
     return merged.sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1))
   }, [changesQuery.data, feed.liveChanges])
 
-  const selected = changes.find((c) => c.id === selectedId) ?? null
+  const wide = useMediaQuery('(min-width: 1024px)')
+  // wide screens never show an empty detail pane: the newest change is open by default
+  const selected = changes.find((c) => c.id === selectedId) ?? (wide ? (changes[0] ?? null) : null)
 
   // lanes: main first, then branches by first (newest) appearance
   const lanes = useMemo(() => {
@@ -56,12 +69,18 @@ export function HistoryPage() {
 
   return (
     <div className="flex min-h-0 flex-1">
-      {/* left — the braided timeline */}
-      <div className="flex w-[380px] shrink-0 flex-col border-r border-hairline xl:w-[440px]">
-        <div className="flex h-11 shrink-0 items-center gap-2 border-b border-hairline px-4">
+      {/* left — the braided timeline (phones: the whole screen until a change is opened) */}
+      <div
+        className={clsx(
+          'w-full shrink-0 flex-col border-r border-hairline lg:flex lg:w-[380px] xl:w-[440px]',
+          selected && !wide ? 'hidden' : 'flex',
+        )}
+      >
+        <div className="flex h-12 shrink-0 items-center gap-2 border-b border-hairline px-4">
           <h1 className="text-h4 text-primary">Version history</h1>
+          <span className="tnum text-small text-tertiary">{changes.length > 0 ? `${changes.length} change${changes.length === 1 ? '' : 's'}` : ''}</span>
           <Button variant="ghost" size="sm" className="ml-auto" onClick={() => setMainPreview(true)}>
-            <MonitorPlay size={14} strokeWidth={1.5} />
+            <MonitorPlay size={14} strokeWidth={1.5} aria-hidden />
             Preview main
           </Button>
         </div>
@@ -85,7 +104,7 @@ export function HistoryPage() {
               lanes={lanes}
               laneX={laneX}
               gutterW={gutterW}
-              selectedId={selectedId}
+              selectedId={selected?.id ?? null}
               onSelect={setSelectedId}
               freshIds={feed.freshChangeIds}
               now={now}
@@ -95,14 +114,26 @@ export function HistoryPage() {
       </div>
 
       {/* right — detail */}
-      <div className="flex min-w-0 flex-1 flex-col">
+      <div className={clsx('min-w-0 flex-1 flex-col', selected || (wide && changes.length > 0) ? 'flex' : 'hidden')}>
+        {selected && !wide && (
+          <button
+            onClick={() => setSelectedId(null)}
+            className="flex h-10 shrink-0 items-center gap-1.5 border-b border-hairline px-4 text-small text-secondary transition-colors duration-micro hover:text-primary"
+          >
+            <ArrowLeft size={14} strokeWidth={1.5} aria-hidden />
+            All changes
+          </button>
+        )}
         {selected ? (
           <PaneBoundary label="change detail">
             <ChangeDetail projectId={projectId} change={selected} lens={lens} onLensChange={setLens} />
           </PaneBoundary>
         ) : (
           <div className="flex flex-1 items-center justify-center">
-            <EmptyState title="Select a change" hint="Pick any node on the timeline to read it — in plain English or in git terms." />
+            <EmptyState
+              title="Nothing to read yet"
+              hint="Every commit the agent makes lands on this timeline, explained in plain English — start a session in any module."
+            />
           </div>
         )}
       </div>
@@ -181,6 +212,7 @@ function BraidList({
           <button
             key={c.id}
             onClick={() => onSelect(c.id)}
+            aria-pressed={isSelected}
             className={clsx(
               'absolute inset-x-0 flex items-center gap-3 pr-4 text-left transition-colors duration-micro',
               isSelected ? 'bg-lav-fill' : 'hover:bg-raised',
@@ -199,11 +231,15 @@ function BraidList({
                 background: isSelected ? 'var(--lav-300)' : onMain ? 'var(--thread-branch-active)' : 'var(--thread-node)',
               }}
             />
-            <Avatar name={c.authorName} color={c.authorAvatarColor} size="xs" />
+            <Avatar name={c.authorName} color={c.authorAvatarColor} size="sm" />
             <span className="min-w-0 flex-1">
-              <span className="block truncate font-mono text-code-sm text-primary">{c.plainExplanation}</span>
-              <span className="mt-0.5 block truncate font-mono text-small text-tertiary">
-                {c.branchName === 'main' ? 'main' : c.branchName.replace(/^session\//, '')}
+              <span className="block truncate text-ui text-primary">{headline(c)}</span>
+              <span className="mt-0.5 block truncate text-small text-tertiary">
+                {c.authorName}
+                <span aria-hidden> · </span>
+                <span className="font-mono" translate="no">
+                  {c.branchName === 'main' ? 'main' : c.branchName.replace(/^session\//, '')}
+                </span>
               </span>
             </span>
             <span className="tnum shrink-0 font-mono text-small text-tertiary">{timeAgo(c.createdAt, now)}</span>
@@ -212,6 +248,12 @@ function BraidList({
       })}
     </div>
   )
+}
+
+/** The row's headline: what was asked (the quoted request), not the boilerplate around it. */
+function headline(c: ChangeSummary): string {
+  const quoted = /“([^”]+)”/.exec(c.plainExplanation)?.[1]
+  return quoted ?? c.technicalSummary ?? c.plainExplanation
 }
 
 /* ----------------------------------------------------------------------------
@@ -284,7 +326,9 @@ function BranchesStrip({ projectId }: { projectId: string }) {
         </div>
       ))}
       {note && (
-        <div className={clsx('px-4 py-2 text-small', note.ok ? 'text-ok' : 'text-danger')}>{note.text}</div>
+        <div role="status" className={clsx('px-4 py-2 text-small', note.ok ? 'text-ok' : 'text-danger')}>
+          {note.text}
+        </div>
       )}
     </div>
   )
@@ -348,6 +392,8 @@ function ChangeDetail({
         <div className="ml-auto flex items-center gap-2">
           <SegmentedControl
             size="sm"
+            className="w-[15rem]"
+            ariaLabel="View"
             value={tab === 'files' ? 'files' : lens}
             options={[
               { value: 'simple', label: 'Simple' },
@@ -457,7 +503,7 @@ function FileBrowser({ projectId, refSha }: { projectId: string; refSha: string 
   return (
     <div className="flex min-h-0 gap-5">
       <div className="w-60 shrink-0">
-        <div className="mb-2 text-micro uppercase tracking-[0.08em] text-tertiary">Files at this commit</div>
+        <div className="mb-2 text-small font-medium text-tertiary">Files at this commit</div>
         <TreeLevel node={tree} depth={0} selectedPath={selectedPath} onSelect={setSelectedPath} />
       </div>
       <div className="min-w-0 flex-1">

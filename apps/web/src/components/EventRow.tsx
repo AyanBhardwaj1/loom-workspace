@@ -24,6 +24,7 @@ import {
   TriangleAlert,
   X,
 } from 'lucide-react'
+import { toast } from 'sonner'
 import { memo, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { Link } from 'react-router-dom'
 import type { PresenceUser, SessionEventOf } from '@loom/shared'
@@ -37,9 +38,10 @@ import type { DisplayItem, RowActions } from './eventStream'
 
 const NUMBER_TIMING: EffectTiming = { duration: 180, easing: 'cubic-bezier(0.2,0,0,1)' }
 
+const CLOCK = new Intl.DateTimeFormat(undefined, { hour: '2-digit', minute: '2-digit' })
+
 function clock(iso: string): string {
-  const d = new Date(iso)
-  return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`
+  return CLOCK.format(new Date(iso))
 }
 
 /** Middle-truncate a path, keeping the filename intact. */
@@ -136,19 +138,20 @@ export const EventRow = memo(function EventRow({
         <Popover open={confirmOpen} onOpenChange={setConfirmOpen}>
           <PopoverTrigger asChild>
             <button
+              aria-label="Fork from this point"
               title="Fork from this point"
               className={clsx(
                 'absolute right-0 top-1.5 z-0 h-6 w-6 items-center justify-center rounded text-tertiary transition-colors duration-micro hover:bg-raised hover:text-lav-300',
-                confirmOpen ? 'flex' : 'hidden group-hover:flex',
+                confirmOpen ? 'flex' : 'flex opacity-0 focus-visible:opacity-100 group-hover:opacity-100 group-focus-within:opacity-100 [@media(hover:none)]:opacity-100',
               )}
             >
-              <GitFork size={14} strokeWidth={1.5} />
+              <GitFork size={14} strokeWidth={1.5} aria-hidden />
             </button>
           </PopoverTrigger>
           <PopoverContent side="left" align="start" className="w-72">
             <div className="text-ui text-primary">Fork from this point</div>
             <p className="mt-1 text-small leading-relaxed text-secondary">
-              You'll get the conversation and code exactly as of this event. The original session keeps going.
+              You’ll get the conversation and code exactly as of this event. The original session keeps going.
             </p>
             <div className="mt-2.5 flex justify-end gap-2">
               <Button variant="ghost" size="sm" onClick={() => setConfirmOpen(false)}>
@@ -171,7 +174,7 @@ export const EventRow = memo(function EventRow({
       )}
       {/* 1.2 — reaction strip + 8.2 copy-link, on hover at the row edge */}
       {!compact && (onReact || actions?.projectId) && item.kind !== 'fork' && (
-        <span className="absolute right-14 top-1 z-0 hidden items-center gap-1 group-hover:flex">
+        <span className="absolute right-14 top-1 z-0 flex items-center gap-1 opacity-0 transition-opacity duration-micro focus-within:opacity-100 group-hover:opacity-100 [@media(hover:none)]:hidden">
           {onReact && (
             <ReactionStrip
               onReact={(emoji) => onReact(emoji, item.kind === 'tool' ? (item.call.seq ?? null) : (item.event.seq ?? null))}
@@ -179,17 +182,21 @@ export const EventRow = memo(function EventRow({
           )}
           {actions?.projectId && (
             <button
+              aria-label="Copy a link to this event"
               title="Copy a link to this event"
               onClick={() => {
                 const seq = item.kind === 'tool' ? item.call.seq : item.event.seq
                 const sessionId = item.kind === 'tool' ? item.call.sessionId : item.event.sessionId
-                void navigator.clipboard.writeText(
-                  `${location.origin}/p/${actions.projectId}/s/${sessionId}#seq-${seq ?? ''}`,
-                )
+                navigator.clipboard
+                  .writeText(`${location.origin}/p/${actions.projectId}/s/${sessionId}#seq-${seq ?? ''}`)
+                  .then(
+                    () => toast('Link to this moment copied'),
+                    () => toast('Could not copy — your browser blocked clipboard access'),
+                  )
               }}
               className="flex h-6 w-6 items-center justify-center rounded text-tertiary transition-colors duration-micro hover:bg-raised hover:text-primary"
             >
-              <Link2 size={13} strokeWidth={1.5} />
+              <Link2 size={13} strokeWidth={1.5} aria-hidden />
             </button>
           )}
         </span>
@@ -199,13 +206,15 @@ export const EventRow = memo(function EventRow({
         <Popover open={annotateOpen} onOpenChange={setAnnotateOpen}>
           <PopoverTrigger asChild>
             <button
+              aria-label="React or comment"
               title="React or comment"
               className={clsx(
                 'absolute right-7 top-1.5 z-0 h-6 w-6 items-center justify-center rounded text-tertiary transition-colors duration-micro hover:bg-raised hover:text-primary',
-                annotateOpen ? 'flex' : 'hidden group-hover:flex',
+                // touch screens: only the fork icon (in the gutter) stays visible — this one would sit on the content
+                annotateOpen ? 'flex' : 'flex opacity-0 focus-visible:opacity-100 group-hover:opacity-100 group-focus-within:opacity-100 [@media(hover:none)]:hidden',
               )}
             >
-              <Plus size={14} strokeWidth={1.5} />
+              <Plus size={14} strokeWidth={1.5} aria-hidden />
             </button>
           </PopoverTrigger>
           <PopoverContent side="left" align="start" className="w-64">
@@ -250,6 +259,7 @@ function AnnotatePopover({ onReact, onComment }: { onReact: (name: string) => vo
           <button
             key={r.name}
             title={r.label}
+            aria-label={r.label}
             onClick={() => onReact(r.name)}
             className="flex h-7 w-7 items-center justify-center rounded border border-hairline text-secondary transition-colors duration-micro hover:border-hairline-hover hover:text-primary"
           >
@@ -267,6 +277,9 @@ function AnnotatePopover({ onReact, onComment }: { onReact: (name: string) => vo
         <input
           value={text}
           onChange={(e) => setText(e.target.value)}
+          name="comment"
+          aria-label="Comment on this moment"
+          autoComplete="off"
           placeholder="Add a comment…"
           maxLength={1000}
           className="loom-input py-1.5 text-small"
@@ -341,7 +354,7 @@ function RowBody({
       return <UserBubble event={item.event} compact={compact} driverName={driverName} driverColor={driverColor} />
     case 'assistant':
       return (
-        <div className={clsx('max-w-[70ch] whitespace-pre-wrap text-primary', compact ? 'text-small' : 'text-body')}>
+        <div className={clsx('max-w-[70ch] whitespace-pre-wrap break-words text-primary', compact ? 'text-small' : 'text-body')}>
           <InlineText text={item.event.payload.text} />
         </div>
       )
@@ -469,7 +482,7 @@ function UserBubble({
           <span className="tnum ml-auto font-mono text-small text-tertiary">{clock(event.createdAt)}</span>
         </div>
       )}
-      <div className={clsx('whitespace-pre-wrap text-primary', compact ? 'text-small' : 'text-body')}>
+      <div className={clsx('whitespace-pre-wrap break-words text-primary', compact ? 'text-small' : 'text-body')}>
         {event.payload.text}
       </div>
     </div>
@@ -528,6 +541,7 @@ function ToolChip({ item, compact }: { item: Extract<DisplayItem, { kind: 'tool'
     <div ref={wrapRef}>
       <button
         onClick={toggle}
+        aria-expanded={open}
         className={clsx(
           'inline-flex h-7 max-w-full items-center gap-2 rounded border bg-surface px-2.5 text-left transition-colors duration-micro',
           failed ? 'border-danger-border' : 'border-hairline hover:border-hairline-hover',
@@ -559,13 +573,13 @@ function ToolChip({ item, compact }: { item: Extract<DisplayItem, { kind: 'tool'
       </button>
       {open && (
         <div className="mt-1.5 max-w-[70ch] space-y-1.5 rounded border border-hairline bg-inset p-2.5 font-mono text-code-sm">
-          <div className="text-micro uppercase tracking-[0.08em] text-tertiary">input</div>
+          <div className="text-small font-medium text-tertiary">input</div>
           <pre className="overflow-x-auto whitespace-pre-wrap break-all text-secondary">
             {JSON.stringify(call.payload.input, null, 2)}
           </pre>
           {result && (
             <>
-              <div className="pt-1 text-micro uppercase tracking-[0.08em] text-tertiary">result</div>
+              <div className="pt-1 text-small font-medium text-tertiary">result</div>
               <div className={result.payload.ok ? 'text-ok' : 'text-danger'}>{result.payload.summary}</div>
               {result.payload.detail && (
                 <pre className="max-h-48 overflow-auto whitespace-pre-wrap break-all text-secondary">
@@ -713,45 +727,55 @@ export function UnifiedDiffView({
 
   return (
     <div ref={wrapRef} className="max-w-[70ch] overflow-hidden rounded-lg border border-hairline bg-surface">
-      <button
-        onClick={() => {
-          if (wrapRef.current) flipContainer(wrapRef.current, () => setBodyOpen((v) => !v))
-          else setBodyOpen((v) => !v)
-        }}
-        className="flex h-9 w-full items-center gap-2 px-3 text-left transition-colors duration-micro hover:bg-raised"
-      >
-        <span className="shrink-0 text-secondary">{fileIcon(path)}</span>
-        <span className="min-w-0 truncate font-mono text-code text-primary" title={path}>
-          {midTruncate(path)}
-        </span>
-        {onPlayEvolution && (
-          <span
-            role="button"
-            tabIndex={0}
-            onClick={(e) => {
-              e.stopPropagation()
-              onPlayEvolution()
-            }}
-            onKeyDown={(e) => {
-              if (e.key === 'Enter' || e.key === ' ') {
-                e.stopPropagation()
-                onPlayEvolution()
-              }
-            }}
-            className="shrink-0 rounded border border-hairline px-1.5 py-0.5 text-small text-secondary transition-colors duration-micro hover:border-hairline-hover hover:text-primary"
-          >
-            Play evolution
+      <div className="flex h-9 items-center transition-colors duration-micro hover:bg-raised">
+        <button
+          onClick={() => {
+            if (wrapRef.current) flipContainer(wrapRef.current, () => setBodyOpen((v) => !v))
+            else setBodyOpen((v) => !v)
+          }}
+          aria-expanded={bodyOpen}
+          aria-label={`${bodyOpen ? 'Collapse' : 'Expand'} diff for ${path}`}
+          className="flex h-full min-w-0 flex-1 items-center gap-2 pl-3 text-left focus-visible:[outline-offset:-2px]"
+        >
+          <span className="shrink-0 text-secondary" aria-hidden>
+            {fileIcon(path)}
           </span>
+          <span className="min-w-0 truncate font-mono text-code text-primary" title={path} translate="no">
+            {midTruncate(path)}
+          </span>
+          <span className="ml-auto">
+            <DiffStats additions={additions} deletions={deletions} flow />
+          </span>
+          {!onPlayEvolution && (
+            <span className="shrink-0 pr-3 text-tertiary" aria-hidden>
+              {bodyOpen ? <ChevronDown size={14} strokeWidth={1.5} /> : <ChevronRight size={14} strokeWidth={1.5} />}
+            </span>
+          )}
+        </button>
+        {onPlayEvolution && (
+          <>
+            <button
+              type="button"
+              onClick={onPlayEvolution}
+              className="ml-2 shrink-0 rounded border border-hairline px-1.5 py-0.5 text-small text-secondary transition-colors duration-micro hover:border-hairline-hover hover:text-primary"
+            >
+              Play evolution
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                if (wrapRef.current) flipContainer(wrapRef.current, () => setBodyOpen((v) => !v))
+                else setBodyOpen((v) => !v)
+              }}
+              aria-hidden
+              tabIndex={-1}
+              className="flex h-full shrink-0 items-center px-3 text-tertiary"
+            >
+              {bodyOpen ? <ChevronDown size={14} strokeWidth={1.5} /> : <ChevronRight size={14} strokeWidth={1.5} />}
+            </button>
+          </>
         )}
-        <span className="ml-auto">
-          <DiffStats additions={additions} deletions={deletions} flow />
-        </span>
-        {bodyOpen ? (
-          <ChevronDown size={14} strokeWidth={1.5} className="shrink-0 text-tertiary" />
-        ) : (
-          <ChevronRight size={14} strokeWidth={1.5} className="shrink-0 text-tertiary" />
-        )}
-      </button>
+      </div>
 
       {bodyOpen && (
         <div className="relative border-t border-hairline bg-inset">
@@ -940,7 +964,7 @@ function SuggestionCard({
         {item.decision === 'accepted' && <Pill tone="ok">accepted</Pill>}
         {item.decision === 'dismissed' && <Pill>dismissed</Pill>}
       </div>
-      <div className={clsx('mt-1.5 whitespace-pre-wrap text-primary', compact ? 'text-small' : 'text-body')}>{p.text}</div>
+      <div className={clsx('mt-1.5 whitespace-pre-wrap break-words text-primary', compact ? 'text-small' : 'text-body')}>{p.text}</div>
       {canResolve && (
         <div className="mt-2.5 flex gap-2">
           <Button variant="primary" size="sm" onClick={() => actions!.onResolveSuggestion!(p.suggestionId, 'accepted')}>

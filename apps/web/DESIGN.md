@@ -109,5 +109,17 @@ initial loading (Spinner / CardSkeleton), error (ErrorState / inline), empty (Em
 - **cmdk / sonner / vaul / react-resizable-panels / @tanstack/react-virtual / lucide (16px, 1.5px stroke) / Radix behavior** — all fully restyled from tokens. If a screenshot reveals the library, restyle until it doesn't.
 - No component ships in its library's default skin. No GSAP outside choreography/. No `!important`.
 
+## 4b. Structure & element conventions (UI overhaul, Oct 2026)
+
+- **One heading voice:** every page has exactly one `<h1>` — `PageHeader` (display size, one line of context, actions right) on Home / Dashboard / Module; the session title and replay title are the `<h1>` in their bars.
+- **Section labels are sentence case** via `SectionLabel` (text-small, medium, tertiary). No all-caps micro labels anywhere; the only caps-free status chips are `Pill` (first letter capitalised) and `LivePill` (dot + "Live").
+- **No void screens:** wide pages pair the main column with a purposeful aside (Home: agent + shortcuts; Module: at-a-glance stats). History opens the newest change on wide screens; the selected change lives in `?change=`.
+- **Session header:** identity + state left; who/how-many/how-much meta; at most five visible actions (Share, Pass the wheel, Replay, Preview, Spectate); everything else under ⋯. Ending a session is a two-step confirm.
+- **Links look like buttons via `buttonVariants`** — never `<Link><Button>` (nested interactive). Navigation is always `<Link>`.
+- **Row actions** (fork / annotate / copy link) appear on hover *or keyboard focus*; on touch only the gutter fork icon is permanently visible.
+- **`cn()` knows the type scale** (`extendTailwindMerge`): without it, `text-ui` was read as a color and silently deleted `text-on-accent` and other text colors.
+- **Phones:** top-bar section nav moves into the project switcher; History stacks list → detail with a back button; replay transport wraps; modals and toasts keep a 16px gutter.
+- **Forms:** every field has a visible `<label>`, `name`, `autocomplete`; errors are `role="alert"`, statuses `role="status"`; Enter never sends mid-IME.
+
 ## 5. Hard bans (Part XI) — grep-able checklist
 glassmorphism/backdrop-blur cards · gradient text · purple→blue washes · glow beyond `--lav-glow` · emoji-as-icon · default library skins · visible mesh-gradient · cards-in-cards · radius >10px · in-app hero sections · shadow soup · pure #000/#FFF · decorative loops · 2px borders · `!important` · GSAP outside choreography/

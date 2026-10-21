@@ -341,13 +341,13 @@ export function ChatLog({
                   <span className="text-small font-medium text-secondary">{driverName}</span>
                   <span className="ml-auto inline-flex items-center">
                     {p.failed ? (
-                      <span className="text-small text-danger">not sent</span>
+                      <span role="alert" className="text-small text-danger">Not sent</span>
                     ) : (
-                      <span className="inline-block h-3 w-3 animate-spin rounded-full border border-hairline-strong border-t-lav-500" style={{ animationDuration: '0.8s' }} />
+                      <span role="status" aria-label="Sending…" className="inline-block h-3 w-3 animate-spin rounded-full border border-hairline-strong border-t-lav-500" style={{ animationDuration: '0.8s' }} />
                     )}
                   </span>
                 </div>
-                <div className={clsx('whitespace-pre-wrap text-primary', compact ? 'text-small' : 'text-body')}>{p.text}</div>
+                <div className={clsx('whitespace-pre-wrap break-words text-primary', compact ? 'text-small' : 'text-body')}>{p.text}</div>
                 {p.failed && (
                   <div className="mt-2 flex gap-2">
                     <button
@@ -375,7 +375,7 @@ export function ChatLog({
                 <>
                   <div
                     className={clsx(
-                      'max-w-[70ch] whitespace-pre-wrap text-primary',
+                      'max-w-[70ch] whitespace-pre-wrap break-words text-primary',
                       compact ? 'text-small' : 'text-body',
                       !thinkingText.trim() && 'stream-caret',
                     )}
@@ -394,7 +394,7 @@ export function ChatLog({
               ) : (
                 <div className="flex min-h-[24px] items-center gap-2 text-small text-tertiary">
                   <span className="stream-caret" />
-                  <span>{agentStatus === 'thinking' ? 'thinking' : 'working'}</span>
+                  <span>{agentStatus === 'thinking' ? 'Thinking…' : 'Working…'}</span>
                 </div>
               )}
             </div>
@@ -448,7 +448,7 @@ export function ChatLog({
                 </span>
               ))}
           </span>
-          <span className="inline-flex items-center gap-1 text-micro uppercase tracking-[0.08em] text-tertiary">
+          <span className="inline-flex items-center gap-1 text-small font-medium text-tertiary">
             <span aria-hidden className="h-1.5 w-1.5 rounded-full bg-lav-500" />
             live
           </span>
@@ -477,7 +477,7 @@ export function ChatLog({
             setAtBottom(true)
             scrollToBottom('smooth')
           }}
-          className="absolute bottom-3 left-1/2 z-sticky flex -translate-x-1/2 items-center gap-1.5 rounded-full border border-hairline bg-overlay px-3 py-1 text-micro uppercase tracking-[0.08em] text-secondary shadow-dropdown transition-colors duration-micro hover:text-primary"
+          className="absolute bottom-3 left-1/2 z-sticky flex -translate-x-1/2 items-center gap-1.5 rounded-full border border-hairline bg-overlay px-3 py-1 text-small font-medium text-secondary shadow-dropdown transition-colors duration-micro hover:text-primary"
         >
           <ArrowDown size={12} strokeWidth={1.5} />
           Jump to live

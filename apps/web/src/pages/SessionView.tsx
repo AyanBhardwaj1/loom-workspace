@@ -1,12 +1,29 @@
 import NumberFlow from '@number-flow/react'
-import { Check, Copy, Download, Eye, GitFork, Lightbulb, Link2, MonitorPlay, PanelRightClose, PanelRightOpen, Play, Repeat2 } from 'lucide-react'
+import {
+  Check,
+  Copy,
+  Download,
+  Eye,
+  GitBranch,
+  GitFork,
+  Lightbulb,
+  Link2,
+  MonitorPlay,
+  MoreHorizontal,
+  PanelRightClose,
+  PanelRightOpen,
+  Play,
+  Repeat2,
+  Settings2,
+  Square,
+} from 'lucide-react'
 import { toast } from 'sonner'
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import { Group, Panel, Separator, type Layout } from 'react-resizable-panels'
 import { Drawer } from 'vaul'
 import { cacheHitRate, formatCost, formatTokens, sumUsage } from '@loom/shared'
-import { AgentModeChip } from '../components/AiSettingsDialog'
+import { openSettings } from '../components/CommandPalette'
 import { ChatLog } from '../components/ChatLog'
 import { Composer } from '../components/Composer'
 import { PaneBoundary } from '../components/PaneBoundary'
@@ -14,7 +31,7 @@ import { PreviewPane } from '../components/PreviewPane'
 import { SessionScrubber } from '../components/SessionScrubber'
 import { SpectatorSidebar } from '../components/SpectatorSidebar'
 import { Modal, Popover, PopoverContent, PopoverTrigger, Tooltip } from '../components/overlay'
-import { Avatar, Button, LivePill, MonoChip, Pill, Spinner, StatusDot, cn } from '../components/primitives'
+import { Avatar, Button, LivePill, MonoChip, Pill, Spinner, StatusDot, buttonVariants, cn } from '../components/primitives'
 import { api } from '../lib/api'
 import { momentFork } from '../lib/choreography'
 import { setBrowserStreamingIndicator } from '../lib/brand'
@@ -54,6 +71,9 @@ export function SessionView() {
   const [shareUrl, setShareUrl] = useState<string | null>(null)
   const [shareCopied, setShareCopied] = useState(false)
   const [handoffOpen, setHandoffOpen] = useState(false)
+  const [moreOpen, setMoreOpen] = useState(false)
+  // ending is destructive for every watcher — it takes a second, explicit step
+  const [confirmEnd, setConfirmEnd] = useState(false)
   const [jumpSeq, setJumpSeq] = useState<number | null>(null)
 
   useEffect(() => {
@@ -194,7 +214,6 @@ export function SessionView() {
 
   const endSession = async () => {
     if (!sessionId || ending) return
-    if (!confirm('End this session? The branch and full transcript stay available.')) return
     setEnding(true)
     try {
       await api.post(`/api/sessions/${sessionId}/end`)
@@ -217,8 +236,8 @@ export function SessionView() {
     return (
       <div className="flex flex-1 flex-col items-center justify-center gap-3 text-ui text-secondary">
         <div>{stream.error ?? 'Session not found.'}</div>
-        <Link to={`/p/${projectId}`}>
-          <Button>Back to dashboard</Button>
+        <Link to={`/p/${projectId}`} className={buttonVariants()}>
+          Back to dashboard
         </Link>
       </div>
     )
@@ -232,28 +251,44 @@ export function SessionView() {
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
-      {/* session header */}
-      <header className="flex h-11 shrink-0 items-center gap-2.5 border-b border-hairline px-4">
-        <Link
-          to={`/p/${projectId}/m/${session.moduleId}`}
-          className="flex min-w-0 items-center gap-1.5 text-ui text-secondary transition-colors duration-micro hover:text-primary"
-          title="Back to module"
-        >
-          <span className="text-ui">{meta.moduleEmoji}</span>
-          <span className="hidden truncate sm:inline">{meta.moduleName}</span>
-        </Link>
-        <span className="text-tertiary">/</span>
-        <span className="min-w-0 truncate text-ui font-medium text-primary">{session.title}</span>
-        {session.parentSessionId && (
-          <Link to={`/p/${projectId}/s/${session.parentSessionId}`} title="Open the session this was forked from">
-            <Pill tone="accent">
-              <GitFork size={10} strokeWidth={1.5} /> forked
-            </Pill>
+      {/* session header: identity + state on the left, the few actions people use most on the right, the rest under ⋯ */}
+      <header className="flex h-12 shrink-0 items-center gap-2 border-b border-hairline px-3 sm:gap-3 sm:px-4">
+        <div className="flex min-w-0 flex-1 items-center gap-2">
+          <Link
+            to={`/p/${projectId}/m/${session.moduleId}`}
+            className="flex shrink-0 items-center gap-1.5 rounded px-1 py-0.5 text-ui text-secondary transition-colors duration-micro hover:text-primary"
+            aria-label={`Back to ${meta.moduleName}`}
+          >
+            <span aria-hidden>{meta.moduleEmoji}</span>
+            <span className="hidden max-w-[10rem] truncate md:inline">{meta.moduleName}</span>
           </Link>
-        )}
-        {isEnded ? <Pill>ended</Pill> : streamingNow ? <LivePill /> : null}
+          <span className="hidden text-tertiary md:inline" aria-hidden>
+            /
+          </span>
+          <h1 className="min-w-0 truncate text-ui font-medium text-primary" title={`${session.title} — branch ${session.branchName}`}>
+            {session.title}
+          </h1>
+          {session.parentSessionId && (
+            <Link to={`/p/${projectId}/s/${session.parentSessionId}`} title="Open the session this was forked from" className="hidden shrink-0 sm:inline-flex">
+              <Pill tone="accent">
+                <GitFork size={10} strokeWidth={1.5} aria-hidden /> forked
+              </Pill>
+            </Link>
+          )}
+          {isEnded ? (
+            <Pill className="shrink-0">ended</Pill>
+          ) : streamingNow ? (
+            <LivePill className="shrink-0" label={stream.agentStatus === 'running_tools' ? 'Working' : 'Live'} />
+          ) : (
+            <span className="hidden shrink-0 items-center gap-1.5 text-small text-tertiary sm:inline-flex" role="status">
+              <StatusDot tone={stream.agentStatus === 'error' ? 'danger' : 'idle'} />
+              {stream.agentStatus === 'error' ? 'needs attention' : 'idle'}
+            </span>
+          )}
+        </div>
 
-        <div className="ml-auto flex items-center gap-2.5">
+        {/* meta: who, how many, how much */}
+        <div className="hidden shrink-0 items-center gap-3 border-r border-hairline pr-3 lg:flex">
           {usage.inputTokens + usage.outputTokens > 0 && (
             <Tooltip
               content={`${usage.inputTokens.toLocaleString()} in · ${usage.outputTokens.toLocaleString()} out${
@@ -262,7 +297,7 @@ export function SessionView() {
                   : ''
               } · ${usage.turns} turn${usage.turns === 1 ? '' : 's'}`}
             >
-              <span className="tnum hidden font-mono text-small text-tertiary lg:inline-flex lg:items-center lg:gap-1">
+              <span className="tnum inline-flex items-center gap-1 font-mono text-small text-tertiary">
                 <NumberFlow
                   value={usage.inputTokens + usage.outputTokens}
                   format={{ notation: 'compact' }}
@@ -274,75 +309,59 @@ export function SessionView() {
               </span>
             </Tooltip>
           )}
-          <span className="hidden xl:inline-flex">
-            <AgentModeChip />
-          </span>
-          {!isEnded && (
-            <span className="hidden items-center gap-1.5 text-small text-secondary md:inline-flex">
-              <StatusDot tone={stream.agentStatus === 'error' ? 'danger' : streamingNow ? 'accent' : 'idle'} />
-              {stream.agentStatus === 'thinking' ? 'thinking' : stream.agentStatus === 'running_tools' ? 'working' : stream.agentStatus}
-            </span>
-          )}
           {watchers.length > 0 && (
-            <Tooltip content={watchers.map((w) => w.name).join(', ')}>
+            <Tooltip content={`Watching: ${watchers.map((w) => w.name).join(', ')}`}>
               <span className="tnum inline-flex items-center gap-1 text-small text-secondary">
-                <Eye size={13} strokeWidth={1.5} />
+                <Eye size={13} strokeWidth={1.5} aria-hidden />
                 <NumberFlow value={watchers.length} transformTiming={NUMBER_TIMING} spinTiming={NUMBER_TIMING} />
+                <span className="sr-only">watching</span>
               </span>
             </Tooltip>
           )}
           <Tooltip content={`${session.driverName} is driving`}>
             <span className="inline-flex items-center gap-1.5">
               <Avatar name={session.driverName} color={session.driverAvatarColor} size="sm" />
-              <span className="hidden text-small text-secondary md:inline">{session.driverName}</span>
+              <span className="text-small text-secondary">{session.driverName}</span>
             </span>
           </Tooltip>
-          <MonoChip className="hidden lg:inline-flex" title="This session's git branch">
-            {session.branchName}
-          </MonoChip>
-          {isDriver && !isEnded && (
-            <Button variant="ghost" size="sm" onClick={() => void endSession()} disabled={ending}>
-              End
-            </Button>
-          )}
-          <Tooltip content="Export the session as Markdown">
-            <span>
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={() => {
-                  downloadMarkdown(`${session.title.replace(/[^\w.-]+/g, '-')}.md`, sessionToMarkdown(meta, stream.events))
-                  toast('Exported session.md')
-                }}
-              >
-                <Download size={14} strokeWidth={1.5} />
-              </Button>
-            </span>
-          </Tooltip>
+        </div>
+
+        <div className="flex shrink-0 items-center gap-1">
           {isDriver && !isEnded && (
             <Popover open={shareOpen} onOpenChange={(v) => { setShareOpen(v); if (v) void openShare() }}>
               <PopoverTrigger asChild>
-                <Button variant="ghost" size="sm">
-                  <Link2 size={14} strokeWidth={1.5} />
-                  Share
+                <Button variant="ghost" size="sm" aria-label="Share a read-only link">
+                  <Link2 size={14} strokeWidth={1.5} aria-hidden />
+                  <span className="hidden xl:inline">Share</span>
                 </Button>
               </PopoverTrigger>
               <PopoverContent align="end" className="w-80">
                 <div className="text-ui text-primary">Read-only share link</div>
                 <div className="mt-2 flex gap-1.5">
-                  <input readOnly value={shareUrl ?? 'Creating link…'} className="loom-input py-1.5 font-mono text-code-sm" />
+                  <input
+                    readOnly
+                    aria-label="Share link"
+                    value={shareUrl ?? 'Creating link…'}
+                    className="loom-input py-1.5 font-mono text-code-sm"
+                  />
                   <Button
                     variant="outline"
                     size="sm"
+                    aria-label={shareCopied ? 'Copied' : 'Copy link'}
                     disabled={!shareUrl}
                     onClick={async () => {
                       if (!shareUrl) return
-                      await navigator.clipboard.writeText(shareUrl)
+                      try {
+                        await navigator.clipboard.writeText(shareUrl)
+                      } catch {
+                        toast('Could not copy — select the link and copy it instead')
+                        return
+                      }
                       setShareCopied(true)
                       setTimeout(() => setShareCopied(false), 1200)
                     }}
                   >
-                    {shareCopied ? <Check size={13} strokeWidth={2} className="text-ok" /> : <Copy size={13} strokeWidth={1.5} />}
+                    {shareCopied ? <Check size={13} strokeWidth={2} className="text-ok" aria-hidden /> : <Copy size={13} strokeWidth={1.5} aria-hidden />}
                   </Button>
                 </div>
                 <p className="mt-2 text-small leading-relaxed text-tertiary">Anyone with the link can view this session.</p>
@@ -351,7 +370,12 @@ export function SessionView() {
                   size="sm"
                   className="mt-2"
                   onClick={async () => {
-                    await api.del(`/api/sessions/${session.id}/share`)
+                    try {
+                      await api.del(`/api/sessions/${session.id}/share`)
+                    } catch {
+                      toast('Could not revoke — the link still works. Try again.')
+                      return
+                    }
                     setShareUrl(null)
                     setShareOpen(false)
                     toast('Share link revoked')
@@ -365,13 +389,13 @@ export function SessionView() {
           {isDriver && !isEnded && watchers.some((w) => w.userId !== user?.id) && (
             <Popover open={handoffOpen} onOpenChange={setHandoffOpen}>
               <PopoverTrigger asChild>
-                <Button variant="ghost" size="sm" title="Pass the wheel to a watcher">
-                  <Repeat2 size={14} strokeWidth={1.5} />
-                  Pass the wheel
+                <Button variant="ghost" size="sm" aria-label="Pass the wheel to a watcher">
+                  <Repeat2 size={14} strokeWidth={1.5} aria-hidden />
+                  <span className="hidden xl:inline">Pass the wheel</span>
                 </Button>
               </PopoverTrigger>
               <PopoverContent align="end" className="w-64 p-1.5">
-                <div className="px-2 pb-1.5 pt-1 text-micro uppercase tracking-[0.08em] text-tertiary">Offer the wheel to</div>
+                <div className="px-2 pb-1.5 pt-1 text-small font-medium text-tertiary">Offer the wheel to</div>
                 {watchers
                   .filter((w) => w.userId !== user?.id)
                   .map((w) => (
@@ -392,31 +416,123 @@ export function SessionView() {
             </Popover>
           )}
           <Tooltip content="Replay — scrub, play back, fork from any point">
-            <Link to={`/replay/${session.id}`}>
-              <Button variant="ghost" size="sm">
-                <Play size={14} strokeWidth={1.5} />
-                Replay
-              </Button>
+            <Link to={`/replay/${session.id}`} className={buttonVariants({ variant: 'ghost', size: 'sm' })} aria-label="Replay">
+              <Play size={14} strokeWidth={1.5} aria-hidden />
+              <span className="hidden xl:inline">Replay</span>
             </Link>
           </Tooltip>
-          <Button variant={previewOpen ? 'outline' : 'ghost'} size="sm" onClick={() => setPreviewOpen((v) => !v)} className="hidden lg:inline-flex">
-            <MonitorPlay size={14} strokeWidth={1.5} />
-            Preview
+          <Button
+            variant={previewOpen ? 'outline' : 'ghost'}
+            size="sm"
+            onClick={() => setPreviewOpen((v) => !v)}
+            className="hidden lg:inline-flex"
+            aria-pressed={previewOpen}
+            aria-label="Live preview"
+          >
+            <MonitorPlay size={14} strokeWidth={1.5} aria-hidden />
+            <span className="hidden xl:inline">Preview</span>
           </Button>
           <Button
-            variant="ghost"
+            variant={sidebarOpen && isDesktop ? 'outline' : 'ghost'}
             size="sm"
             onClick={() => (isDesktop ? setSidebarOpen((v) => !v) : setDrawerOpen(true))}
-            title="Spectate other live sessions"
+            aria-label="Spectate other live sessions"
+            aria-pressed={isDesktop ? sidebarOpen : undefined}
           >
-            {sidebarOpen && isDesktop ? <PanelRightClose size={14} strokeWidth={1.5} /> : <PanelRightOpen size={14} strokeWidth={1.5} />}
-            Spectate
+            {sidebarOpen && isDesktop ? <PanelRightClose size={14} strokeWidth={1.5} aria-hidden /> : <PanelRightOpen size={14} strokeWidth={1.5} aria-hidden />}
+            <span className="hidden xl:inline">Spectate</span>
           </Button>
+
+          <Popover open={moreOpen} onOpenChange={(v) => { setMoreOpen(v); if (!v) setConfirmEnd(false) }}>
+            <PopoverTrigger asChild>
+              <Button variant="ghost" size="sm" aria-label="More session actions">
+                <MoreHorizontal size={16} strokeWidth={1.5} aria-hidden />
+              </Button>
+            </PopoverTrigger>
+            <PopoverContent align="end" className="w-72 p-1.5">
+              {confirmEnd ? (
+                <div className="p-2">
+                  <div className="text-ui font-medium text-primary">End this session for everyone?</div>
+                  <p className="mt-1 text-small text-tertiary">
+                    The transcript, commits and branch stay. Anyone can still replay it or fork it to keep going.
+                  </p>
+                  <div className="mt-3 flex justify-end gap-2">
+                    <Button size="sm" variant="ghost" onClick={() => setConfirmEnd(false)}>
+                      Cancel
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="danger"
+                      disabled={ending}
+                      onClick={() => {
+                        setMoreOpen(false)
+                        setConfirmEnd(false)
+                        void endSession()
+                      }}
+                    >
+                      {ending ? 'Ending…' : 'End session'}
+                    </Button>
+                  </div>
+                </div>
+              ) : (
+                <>
+                  <div className="px-2 pb-1.5 pt-1">
+                    <div className="text-small text-tertiary">Branch</div>
+                    <div className="mt-0.5 truncate font-mono text-code-sm text-secondary" translate="no">
+                      {session.branchName}
+                    </div>
+                  </div>
+                  <div className="my-1 border-t border-hairline" />
+                  <MenuItem
+                    icon={<GitBranch size={14} strokeWidth={1.5} aria-hidden />}
+                    onClick={async () => {
+                      setMoreOpen(false)
+                      await navigator.clipboard.writeText(session.branchName).then(
+                        () => toast('Branch name copied'),
+                        () => toast(`Could not copy — the branch is ${session.branchName}`),
+                      )
+                    }}
+                  >
+                    Copy branch name
+                  </MenuItem>
+                  <MenuItem
+                    icon={<Download size={14} strokeWidth={1.5} aria-hidden />}
+                    onClick={() => {
+                      downloadMarkdown(`${session.title.replace(/[^\w.-]+/g, '-')}.md`, sessionToMarkdown(meta, stream.events))
+                      setMoreOpen(false)
+                      toast('Exported session.md')
+                    }}
+                  >
+                    Export as Markdown
+                  </MenuItem>
+                  <MenuItem
+                    icon={<Settings2 size={14} strokeWidth={1.5} aria-hidden />}
+                    onClick={() => {
+                      setMoreOpen(false)
+                      openSettings()
+                    }}
+                  >
+                    AI provider &amp; effort…
+                  </MenuItem>
+                  {isDriver && !isEnded && (
+                    <>
+                      <div className="my-1 border-t border-hairline" />
+                      <MenuItem tone="danger" icon={<Square size={14} strokeWidth={1.5} aria-hidden />} onClick={() => setConfirmEnd(true)}>
+                        End session…
+                      </MenuItem>
+                    </>
+                  )}
+                </>
+              )}
+            </PopoverContent>
+          </Popover>
         </div>
       </header>
 
       {serverError && (
-        <div className="border-b border-hairline bg-danger-fill px-5 py-1.5 text-center text-small text-danger">{serverError}</div>
+        <div role="alert" className="border-b border-hairline bg-danger-fill px-5 py-1.5 text-center text-small text-danger">
+          {serverError}
+        </div>
       )}
 
       <Group
@@ -510,11 +626,9 @@ export function SessionView() {
                     <GitFork size={14} strokeWidth={1.5} />
                     {forking ? 'Forking…' : 'Fork & continue from here'}
                   </Button>
-                  <Link to={`/replay/${session.id}`}>
-                    <Button variant="ghost" size="sm">
-                      <Play size={14} strokeWidth={1.5} />
-                      Replay
-                    </Button>
+                  <Link to={`/replay/${session.id}`} className={buttonVariants({ variant: 'ghost', size: 'sm' })}>
+                    <Play size={14} strokeWidth={1.5} aria-hidden />
+                    Watch the replay
                   </Link>
                 </div>
               </div>
@@ -541,6 +655,9 @@ export function SessionView() {
                     <input
                       value={suggestText}
                       onChange={(e) => setSuggestText(e.target.value)}
+                      name="suggestion"
+                      autoComplete="off"
+                      aria-label={`Suggest a next step to ${session.driverName}`}
                       placeholder={`Suggest a next step to ${session.driverName} — they can accept it with one click…`}
                       className="loom-input"
                       maxLength={2000}
@@ -557,7 +674,7 @@ export function SessionView() {
                       ? 'Session ended.'
                       : suggestSent
                         ? `Sent — ${session.driverName} sees your suggestion in their chat.`
-                        : `You're spectating — ${session.driverName} is driving.`}{' '}
+                        : `You’re spectating — ${session.driverName} is driving.`}{' '}
                     Fork to get {isEnded ? 'its' : 'their'} full conversation and code as your own session.
                   </div>
                   <Button
@@ -606,7 +723,8 @@ export function SessionView() {
           <Drawer.Portal>
             <Drawer.Overlay className="fixed inset-0 z-scrim bg-scrim" />
             <Drawer.Content className="fixed bottom-0 right-0 top-0 z-modal flex w-[85vw] max-w-[380px] outline-none">
-              <div className="relative flex min-w-0 flex-1 flex-col border-l border-hairline bg-surface">
+              <Drawer.Title className="sr-only">Spectate live sessions</Drawer.Title>
+              <div className="relative flex min-w-0 flex-1 flex-col overscroll-contain border-l border-hairline bg-surface">
                 <span aria-hidden className="absolute left-1.5 top-1/2 h-8 w-1 -translate-y-1/2 rounded-full bg-hairline-strong" />
                 {spectatorPane}
               </div>
@@ -643,5 +761,31 @@ function ResizeHandle() {
     <Separator className="loom-separator group relative w-1 shrink-0">
       <span aria-hidden className="absolute inset-y-0 left-0 w-px bg-hairline transition-colors duration-micro group-hover:bg-lav-border group-data-[separator-active]:bg-lav-border" />
     </Separator>
+  )
+}
+
+function MenuItem({
+  icon,
+  children,
+  onClick,
+  tone = 'default',
+}: {
+  icon: ReactNode
+  children: ReactNode
+  onClick: () => void
+  tone?: 'default' | 'danger'
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={cn(
+        'flex h-9 w-full items-center gap-2.5 rounded px-2 text-left text-ui transition-colors duration-micro',
+        tone === 'danger' ? 'text-danger hover:bg-danger-fill' : 'text-secondary hover:bg-raised hover:text-primary',
+      )}
+    >
+      <span className="shrink-0">{icon}</span>
+      {children}
+    </button>
   )
 }

@@ -47,14 +47,19 @@ export function PreviewPane({
   return (
     <div className="flex h-full min-w-0 flex-1 flex-col border-l border-hairline bg-surface">
       <div className="flex h-9 shrink-0 items-center gap-2 border-b border-hairline px-3">
-        <span className="text-micro uppercase tracking-[0.08em] text-tertiary">Preview</span>
+        <span className="text-small font-medium text-tertiary">Preview</span>
         {label && <span className="min-w-0 truncate font-mono text-code-sm text-tertiary">{label}</span>}
         {flash && <Pill tone="ok">updated</Pill>}
         <div className="ml-auto flex items-center gap-0.5">
-          <a href={src} target="_blank" rel="noreferrer" title="Open the preview in a new tab">
-            <IconButton label="Open in new tab" tabIndex={-1}>
-              <ExternalLink size={14} strokeWidth={1.5} />
-            </IconButton>
+          <a
+            href={src}
+            target="_blank"
+            rel="noreferrer"
+            title="Open the preview in a new tab"
+            aria-label="Open the preview in a new tab"
+            className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded text-secondary transition-colors duration-micro hover:bg-raised hover:text-primary"
+          >
+            <ExternalLink size={14} strokeWidth={1.5} aria-hidden />
           </a>
           <IconButton label="Reload the preview" onClick={() => setManualNonce((n) => n + 1)}>
             <RotateCw size={14} strokeWidth={1.5} />
@@ -68,7 +73,9 @@ export function PreviewPane({
       </div>
       <div className="relative min-h-0 flex-1 bg-inset">
         {!loaded && (
-          <div className="absolute inset-0 flex items-center justify-center text-small text-tertiary">Loading preview…</div>
+          <div role="status" className="absolute inset-0 flex items-center justify-center text-small text-tertiary">
+            Loading preview…
+          </div>
         )}
         <iframe
           ref={iframeRef}

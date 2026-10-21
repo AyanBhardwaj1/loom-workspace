@@ -34,7 +34,7 @@ export function Modal({
           style={{ maxWidth: width }}
         >
           <div className="mb-4 flex items-center justify-between gap-3">
-            <DialogPrimitive.Title className="text-h4 text-primary">{title}</DialogPrimitive.Title>
+            <DialogPrimitive.Title className="min-w-0 break-words text-h4 text-primary">{title}</DialogPrimitive.Title>
             <DialogPrimitive.Close asChild>
               <IconButton label="Close">
                 <X size={16} strokeWidth={1.5} />
@@ -126,7 +126,7 @@ export function Toasts() {
         unstyled: true,
         classNames: {
           toast:
-            'group pointer-events-auto flex w-[340px] items-center gap-2.5 rounded-lg border border-hairline bg-raised px-3.5 py-3 text-ui text-primary shadow-dropdown',
+            'group pointer-events-auto flex w-[min(340px,calc(100vw-2rem))] items-center gap-2.5 rounded-lg border border-hairline bg-raised px-3.5 py-3 text-ui text-primary shadow-dropdown',
           title: 'text-ui text-primary',
           description: 'text-small text-secondary',
           icon: 'shrink-0 text-secondary',

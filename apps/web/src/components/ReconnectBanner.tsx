@@ -24,21 +24,22 @@ export function ReconnectBanner() {
     })
   }, [])
 
-  if (status === 'reconnecting') {
-    return (
-      <div className="flex h-8 shrink-0 items-center justify-center gap-2 border-b border-hairline bg-warn-fill text-small text-warn">
-        <StatusDot tone="warn" />
-        Reconnecting — events will catch up
-      </div>
-    )
-  }
-  if (flash) {
-    return (
-      <div className="flex h-8 shrink-0 items-center justify-center gap-2 border-b border-hairline bg-ok-fill text-small text-ok">
-        <StatusDot tone="ok" />
-        Caught up
-      </div>
-    )
-  }
-  return null
+  // the live region stays mounted; only its content changes, so screen readers announce it
+  const tone = status === 'reconnecting' ? 'warn' : flash ? 'ok' : null
+  return (
+    <div role="status" aria-live="polite">
+      {tone && (
+        <div
+          className={
+            tone === 'warn'
+              ? 'flex h-8 shrink-0 items-center justify-center gap-2 border-b border-hairline bg-warn-fill text-small text-warn'
+              : 'flex h-8 shrink-0 items-center justify-center gap-2 border-b border-hairline bg-ok-fill text-small text-ok'
+          }
+        >
+          <StatusDot tone={tone} />
+          {tone === 'warn' ? 'Reconnecting… events will catch up' : 'Caught up'}
+        </div>
+      )}
+    </div>
+  )
 }

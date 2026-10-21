@@ -36,6 +36,12 @@ export default function App() {
 
   return (
     <>
+      <a
+        href="#main"
+        className="sr-only focus:not-sr-only focus:fixed focus:left-3 focus:top-3 focus:z-toast focus:rounded focus:bg-overlay focus:px-3 focus:py-2 focus:text-ui focus:text-primary focus:shadow-dropdown"
+      >
+        Skip to content
+      </a>
       <Routes>
         <Route path="/" element={<Home />} />
         <Route path="/replay/:sessionId" element={<ReplayView />} />

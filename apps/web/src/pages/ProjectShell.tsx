@@ -40,20 +40,20 @@ export function ProjectShell() {
       <div className="flex h-full flex-col">
         <TopBar projectId={projectId} projectName={detailQuery.data?.name ?? '…'} presence={feed.presence} />
         <ReconnectBanner />
-        <div className="flex min-h-0 min-w-0 flex-1 flex-col">
+        <main id="main" className="flex min-h-0 min-w-0 flex-1 flex-col">
           {detailQuery.isLoading ? (
             <div className="flex flex-1 items-center justify-center">
               <Spinner className="h-6 w-6" />
             </div>
           ) : detailQuery.isError ? (
             <div className="flex flex-1 flex-col items-center justify-center gap-3 text-ui text-secondary">
-              <div>Couldn't load this project. Check the server, then try again.</div>
+              <div>Couldn’t load this project. Check the server, then try again.</div>
               <Button onClick={() => void detailQuery.refetch()}>Try again</Button>
             </div>
           ) : (
             <Outlet />
           )}
-        </div>
+        </main>
       </div>
     </ProjectContext.Provider>
   )

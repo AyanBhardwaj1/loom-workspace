@@ -51,7 +51,7 @@ test('fork-from-event: the confirm popover cuts a copy at that point', async ({ 
   const firstRow = page.locator('[data-event-row]').first()
   await firstRow.hover()
   await firstRow.getByTitle('Fork from this point').click()
-  await expect(page.getByText(/you'll get the conversation and code exactly as of this event/i)).toBeVisible()
+  await expect(page.getByText(/you[’']ll get the conversation and code exactly as of this event/i)).toBeVisible()
   await page.getByRole('button', { name: 'Fork', exact: true }).click()
 
   // a different session, whose log is the truncated prefix (no commit yet)
