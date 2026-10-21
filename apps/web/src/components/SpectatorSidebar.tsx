@@ -147,6 +147,7 @@ export function SpectatorSidebar({
             <ChatLog
               events={stream.events}
               streamingText={stream.streamingText}
+              thinkingText={stream.thinkingText}
               agentStatus={stream.agentStatus}
               driverName={selected?.driverName ?? 'Driver'}
               driverColor={selected?.driverAvatarColor ?? 'var(--lav-500)'}

@@ -6,9 +6,10 @@ import { z } from 'zod'
  * the spectator sidebar, and forking are all just views/copies of this log.
  *
  * Persistence rule: every event type is persisted as a row in `session_events`
- * EXCEPT `assistant_delta`, which is broadcast-only (transient). When a
- * streamed message completes, one `assistant_message` is persisted. Transient
- * events carry `seq: null`; persisted events carry a monotonic per-session seq.
+ * EXCEPT the stream deltas (`assistant_delta`, `thinking_delta`), which are
+ * broadcast-only (transient). When a streamed message completes, one
+ * `assistant_message` (or `thought`) is persisted. Transient events carry
+ * `seq: null`; persisted events carry a monotonic per-session seq.
  */
 
 /** Live activity status of the agent inside a session (event-level). */
@@ -34,6 +35,10 @@ export const userMessagePayload = z.object({
 })
 export const assistantDeltaPayload = z.object({ text: z.string() })
 export const assistantMessagePayload = z.object({ text: z.string() })
+/** Live reasoning stream (summarized thinking + between-tool progress notes). */
+export const thinkingDeltaPayload = z.object({ text: z.string() })
+/** One completed stretch of visible reasoning, persisted so replays show it. */
+export const thoughtPayload = z.object({ text: z.string().max(12_000) })
 export const toolCallPayload = z.object({
   toolName: z.string(),
   input: z.record(z.unknown()),
@@ -85,8 +90,12 @@ export const suggestionDecisionPayload = z.object({
 })
 /** Token usage + estimated cost for one completed turn (mock fabricates plausible numbers). */
 export const usagePayload = z.object({
+  /** uncached input */
   inputTokens: z.number().int().nonnegative(),
   outputTokens: z.number().int().nonnegative(),
+  /** prompt-cache traffic (optional: absent on pre-caching events and non-Claude providers) */
+  cacheReadTokens: z.number().int().nonnegative().optional(),
+  cacheWriteTokens: z.number().int().nonnegative().optional(),
   costUsd: z.number().nonnegative(),
   model: z.string().nullable(),
   provider: z.string(),
@@ -120,6 +129,8 @@ export const sessionEventSchema = z.discriminatedUnion('type', [
   z.object({ ...base, type: z.literal('user_message'), payload: userMessagePayload }),
   z.object({ ...base, type: z.literal('assistant_delta'), payload: assistantDeltaPayload }),
   z.object({ ...base, type: z.literal('assistant_message'), payload: assistantMessagePayload }),
+  z.object({ ...base, type: z.literal('thinking_delta'), payload: thinkingDeltaPayload }),
+  z.object({ ...base, type: z.literal('thought'), payload: thoughtPayload }),
   z.object({ ...base, type: z.literal('tool_call'), payload: toolCallPayload }),
   z.object({ ...base, type: z.literal('tool_result'), payload: toolResultPayload }),
   z.object({ ...base, type: z.literal('file_change'), payload: fileChangePayload }),
@@ -142,6 +153,8 @@ export const eventPayloadSchemas = {
   user_message: userMessagePayload,
   assistant_delta: assistantDeltaPayload,
   assistant_message: assistantMessagePayload,
+  thinking_delta: thinkingDeltaPayload,
+  thought: thoughtPayload,
   tool_call: toolCallPayload,
   tool_result: toolResultPayload,
   file_change: fileChangePayload,
@@ -154,10 +167,11 @@ export const eventPayloadSchemas = {
   annotation: annotationPayload,
 } as const
 
-/** Event types that are persisted to the DB (everything except assistant_delta). */
+/** Event types that are persisted to the DB (everything except the stream deltas). */
 export const PERSISTED_EVENT_TYPES: SessionEventType[] = [
   'user_message',
   'assistant_message',
+  'thought',
   'tool_call',
   'tool_result',
   'file_change',
@@ -179,6 +193,10 @@ export function eventGist(event: SessionEvent): string {
       return 'agent is writing…'
     case 'assistant_message':
       return truncate(event.payload.text.replace(/\s+/g, ' '), 72)
+    case 'thinking_delta':
+      return 'agent is thinking…'
+    case 'thought':
+      return `thinking: ${truncate(event.payload.text.replace(/\s+/g, ' '), 64)}`
     case 'tool_call': {
       const p = event.payload.input?.['path']
       return typeof p === 'string'

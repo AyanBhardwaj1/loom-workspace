@@ -1,6 +1,7 @@
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { config as loadDotenv } from 'dotenv'
+import { DEFAULT_CLAUDE_MODEL, DEFAULT_CLAUDE_SUMMARY_MODEL } from './agent/claudeModels'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 
@@ -47,8 +48,8 @@ export function loadConfig(overrides: Partial<ServerConfig> = {}): ServerConfig 
     redisUrl: process.env.REDIS_URL ?? null,
     cookieSecret: process.env.COOKIE_SECRET ?? 'loom-dev-secret-do-not-use-in-prod',
     anthropicApiKey: process.env.ANTHROPIC_API_KEY || null,
-    anthropicModel: process.env.ANTHROPIC_MODEL || 'claude-sonnet-4-5',
-    anthropicSummaryModel: process.env.ANTHROPIC_SUMMARY_MODEL || 'claude-3-5-haiku-latest',
+    anthropicModel: process.env.ANTHROPIC_MODEL || DEFAULT_CLAUDE_MODEL,
+    anthropicSummaryModel: process.env.ANTHROPIC_SUMMARY_MODEL || DEFAULT_CLAUDE_SUMMARY_MODEL,
     webDistPath: path.join(REPO_ROOT, 'apps/web/dist'),
     ...overrides,
   }

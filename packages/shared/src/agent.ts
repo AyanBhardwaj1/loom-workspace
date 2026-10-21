@@ -10,8 +10,16 @@ export type AgentStreamItem =
   | { kind: 'tool_call'; name: string; input: Record<string, unknown> }
   | { kind: 'message_done'; fullText: string }
   | { kind: 'error'; message: string }
-  /** Token usage for one API round; the orchestrator sums these across a turn. */
-  | { kind: 'usage'; inputTokens: number; outputTokens: number }
+  /**
+   * Visible reasoning: summarized thinking + the progress notes current
+   * models write between tool calls. Streamed live, persisted as a `thought`.
+   */
+  | { kind: 'thinking'; text: string }
+  /**
+   * Token usage for one API round; the orchestrator sums these across a turn.
+   * inputTokens is the UNCACHED input; cache traffic is reported separately.
+   */
+  | { kind: 'usage'; inputTokens: number; outputTokens: number; cacheReadTokens?: number; cacheWriteTokens?: number }
 
 export interface AgentToolExecution {
   /** Short human summary for the tool_result event ("Wrote 42 lines to index.html"). */

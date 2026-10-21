@@ -23,7 +23,9 @@ const env = {
   HOST: '127.0.0.1',
   LOOM_DATA_DIR: dataDir,
   LOOM_SQLITE_PATH: path.join(dataDir, 'e2e.db'),
-  LOOM_FAST_MOCK: '1', // deterministic, no-delay mock turns for the E2E
+  // deterministic, no-delay mock turns for the E2E; LOOM_FAST_MOCK=0 gives
+  // human-speed streaming for manual checks of the live surfaces
+  LOOM_FAST_MOCK: process.env.LOOM_FAST_MOCK ?? '1',
 }
 // force mock mode — the E2E must never touch a real provider
 delete env.ANTHROPIC_API_KEY

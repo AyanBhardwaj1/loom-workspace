@@ -16,6 +16,8 @@ export interface SessionStream {
   events: SessionEvent[]
   /** accumulated assistant_delta text since the last finalized message */
   streamingText: string
+  /** live reasoning (thinking_delta) since the last persisted thought */
+  thinkingText: string
   agentStatus: AgentActivityStatus
   loading: boolean
   error: string | null
@@ -36,6 +38,7 @@ export function useSessionStream(sessionId: string | null): SessionStream {
   const [detail, setDetail] = useState<SessionDetail | null>(null)
   const [events, setEvents] = useState<SessionEvent[]>([])
   const [streamingText, setStreamingText] = useState('')
+  const [thinkingText, setThinkingText] = useState('')
   const [agentStatus, setAgentStatus] = useState<AgentActivityStatus>('idle')
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -47,6 +50,7 @@ export function useSessionStream(sessionId: string | null): SessionStream {
       setDetail(null)
       setEvents([])
       setStreamingText('')
+      setThinkingText('')
       setAgentStatus('idle')
       setLoading(false)
       setError(null)
@@ -59,6 +63,7 @@ export function useSessionStream(sessionId: string | null): SessionStream {
     setError(null)
     setEvents([])
     setStreamingText('')
+    setThinkingText('')
     setAgentStatus('idle')
     setDetail(null)
 
@@ -78,8 +83,10 @@ export function useSessionStream(sessionId: string | null): SessionStream {
       }
       for (const e of fresh) {
         if (e.type === 'assistant_message') setStreamingText('')
+        if (e.type === 'thought' || e.type === 'assistant_message') setThinkingText('')
         if (e.type === 'status') {
           setAgentStatus(e.payload.status)
+          if (e.payload.status === 'idle' || e.payload.status === 'error') setThinkingText('')
           if (e.payload.note === 'Session ended') {
             setDetail((prev) =>
               prev ? { ...prev, session: { ...prev.session, status: 'ended' } } : prev,
@@ -120,13 +127,21 @@ export function useSessionStream(sessionId: string | null): SessionStream {
     // (one re-render per frame, not per token). rAF is throttled in hidden
     // tabs, so a 50ms timer backstop keeps state advancing there too.
     let deltaBuffer = ''
+    let thinkingBuffer = ''
     let flushScheduled = false
     const flushDeltas = () => {
       flushScheduled = false
-      if (!alive || deltaBuffer.length === 0) return
-      const chunk = deltaBuffer
-      deltaBuffer = ''
-      setStreamingText((prev) => prev + chunk)
+      if (!alive) return
+      if (deltaBuffer.length > 0) {
+        const chunk = deltaBuffer
+        deltaBuffer = ''
+        setStreamingText((prev) => prev + chunk)
+      }
+      if (thinkingBuffer.length > 0) {
+        const chunk = thinkingBuffer
+        thinkingBuffer = ''
+        setThinkingText((prev) => prev + chunk)
+      }
     }
     const scheduleFlush = () => {
       if (flushScheduled) return
@@ -155,11 +170,16 @@ export function useSessionStream(sessionId: string | null): SessionStream {
         if (msg.event.type === 'assistant_delta') {
           deltaBuffer += msg.event.payload.text
           scheduleFlush()
+        } else if (msg.event.type === 'thinking_delta') {
+          thinkingBuffer += msg.event.payload.text
+          scheduleFlush()
         } else {
           if (msg.event.type === 'assistant_message' && deltaBuffer) {
             // the finalized message supersedes any unflushed tail
             deltaBuffer = ''
           }
+          // the persisted thought supersedes its unflushed live tail
+          if (msg.event.type === 'thought' || msg.event.type === 'assistant_message') thinkingBuffer = ''
           ingest([msg.event])
         }
       } else if (msg.t === 'catchup_batch' && msg.sessionId === sessionId) {
@@ -228,5 +248,5 @@ export function useSessionStream(sessionId: string | null): SessionStream {
 
   useEffect(() => setPending([]), [sessionId])
 
-  return { detail, events, streamingText, agentStatus, loading, error, pending, sendMessage, retryPending, discardPending }
+  return { detail, events, streamingText, thinkingText, agentStatus, loading, error, pending, sendMessage, retryPending, discardPending }
 }

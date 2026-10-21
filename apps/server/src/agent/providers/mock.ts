@@ -20,6 +20,9 @@ export class MockAgentProvider implements AgentProvider {
     }.bind(this)
 
     try {
+      // visible reasoning, like a real model's summarized thinking — so the
+      // "watch it think" lane works in keyless demos too
+      for await (const token of this.makeThinker(ctx.signal)(mockPlan(ctx))) yield token
       const playbook = pickPlaybook(ctx)
       // Check abort BEFORE yielding the next item, never after: the previous
       // item's tool execution has already completed by then, so a stop never
@@ -60,10 +63,32 @@ export class MockAgentProvider implements AgentProvider {
     }
   }
 
+  private makeThinker(signal: AbortSignal) {
+    const fast = this.opts.fast
+    return async function* (text: string): AsyncIterable<AgentStreamItem> {
+      for (const token of text.split(/(?<=\s)/)) {
+        if (signal.aborted) return
+        yield { kind: 'thinking', text: token }
+        if (!fast) await sleep(8 + Math.random() * 14)
+      }
+    }
+  }
+
   private async pause(ms: number, signal: AbortSignal): Promise<void> {
     if (signal.aborted || this.opts.fast) return
     await sleep(ms + Math.random() * 150)
   }
+}
+
+/** A short, deterministic planning thought grounded in the request and workspace. */
+function mockPlan(ctx: AgentTurnContext): string {
+  const ask = ctx.userMessage.replace(/\s+/g, ' ').trim()
+  const files = ctx.fileTree.length
+  const workspace =
+    files === 0
+      ? 'The workspace is empty, so this starts from scratch.'
+      : `The workspace has ${files} file${files === 1 ? '' : 's'}${ctx.fileTree.includes('index.html') ? ', with index.html as the entry point' : ''}.`
+  return `${ctx.driverName} wants: “${ask.length > 90 ? ask.slice(0, 89) + '…' : ask}”. ${workspace} Plan: make the smallest change that works, keep the page runnable after every step, then summarize what changed.`
 }
 
 type Speak = (text: string) => AsyncIterable<AgentStreamItem>

@@ -16,14 +16,14 @@ import {
 import type { ConflictResolver } from './providers'
 
 const SETTINGS_KEY = 'ai_provider'
-export const DEFAULT_OPENROUTER_MODEL = 'anthropic/claude-sonnet-4.5'
+export const DEFAULT_OPENROUTER_MODEL = 'anthropic/claude-opus-5.5'
 
 interface StoredAiSettings {
   provider: 'anthropic' | 'openrouter'
   apiKey: string
   model: string
   baseUrl?: string
-  /** openrouter only: effort level / 'on' / 'off'; null = provider default */
+  /** effort level (both providers) or 'on'/'off' (OpenRouter toggles); null = provider default */
   reasoning?: string | null
 }
 
@@ -86,6 +86,7 @@ export class AgentRuntime {
             provider: 'anthropic',
             apiKey: update.apiKey.trim(),
             model: update.model?.trim() || this.config.anthropicModel,
+            reasoning: update.reasoning ?? null,
           }
         : {
             provider: 'openrouter',
@@ -116,7 +117,7 @@ export class AgentRuntime {
 
   private applyStored(stored: StoredAiSettings): void {
     if (stored.provider === 'anthropic') {
-      this.provider = new AnthropicAgentProvider({ apiKey: stored.apiKey, model: stored.model })
+      this.provider = new AnthropicAgentProvider({ apiKey: stored.apiKey, model: stored.model, effort: stored.reasoning ?? null })
       this.summarizer = new AnthropicSummarizer({
         apiKey: stored.apiKey,
         model: this.config.anthropicSummaryModel,
@@ -138,7 +139,7 @@ export class AgentRuntime {
     this.mode = stored.provider
     this.model = stored.model
     this.source = 'runtime'
-    this.reasoning = stored.provider === 'openrouter' ? ((stored.reasoning as AiSettingsDto['reasoning']) ?? null) : null
+    this.reasoning = (stored.reasoning as AiSettingsDto['reasoning']) ?? null
     this.maskedKey = maskKey(stored.apiKey)
   }
 
@@ -194,19 +195,23 @@ function maskKey(key: string): string {
   return key.length <= 8 ? 'sk-…' : `${key.slice(0, 3)}…${key.slice(-4)}`
 }
 
+/**
+ * Proves key + model with the Models API: an authenticated lookup of the
+ * model id — no generation, no tokens billed.
+ */
 async function validateAnthropic(apiKey: string, model: string): Promise<{ ok: true } | { ok: false; error: string }> {
   try {
-    const client = new Anthropic({ apiKey })
-    await client.messages.create({
-      model,
-      max_tokens: 1,
-      messages: [{ role: 'user', content: 'ping' }],
-    })
+    const client = new Anthropic({ apiKey, maxRetries: 1, timeout: 15_000 })
+    await client.models.retrieve(model)
     return { ok: true }
   } catch (err) {
+    if (err instanceof Anthropic.AuthenticationError || err instanceof Anthropic.PermissionDeniedError) {
+      return { ok: false, error: 'Anthropic rejected that API key.' }
+    }
+    if (err instanceof Anthropic.NotFoundError) {
+      return { ok: false, error: `Anthropic doesn't recognize the model id "${model}".` }
+    }
     const message = err instanceof Error ? err.message : String(err)
-    if (/401|authentication/i.test(message)) return { ok: false, error: 'Anthropic rejected that API key.' }
-    if (/404|model/i.test(message)) return { ok: false, error: `Anthropic rejected the model id: ${message.slice(0, 200)}` }
     return { ok: false, error: `Could not verify the key with Anthropic: ${message.slice(0, 200)}` }
   }
 }

@@ -1,5 +1,5 @@
 import { BRAND, type AgentProvider, type AgentStreamItem, type AgentTurnContext, type TranscriptEntry } from '@loom/shared'
-import { agentSystemPrompt } from '../context'
+import { agentDynamicContext, agentSystemPrompt } from '../context'
 import { TemplateSummarizer, type CommitSummary, type Summarizer, type SummaryInput } from '../summarizer'
 import { AGENT_TOOL_DEFS } from '../tools'
 
@@ -25,6 +25,12 @@ export function reasoningParam(setting: string | null | undefined): Record<strin
   if (setting === 'on') return { reasoning: { enabled: true } }
   if (setting === 'off') return { reasoning: { enabled: false } }
   return { reasoning: { effort: setting } }
+}
+
+interface CompatUsage {
+  prompt_tokens?: number
+  completion_tokens?: number
+  prompt_tokens_details?: { cached_tokens?: number; cache_write_tokens?: number }
 }
 
 interface StreamedToolCall {
@@ -55,8 +61,7 @@ export class OpenAICompatProvider implements AgentProvider {
         driverName: ctx.driverName,
       }),
       '',
-      'Current files in the workspace:',
-      ctx.fileTree.length > 0 ? ctx.fileTree.map((f) => `- ${f}`).join('\n') : '(empty)',
+      agentDynamicContext(ctx),
     ].join('\n')
 
     const messages: Array<Record<string, unknown>> = [
@@ -109,16 +114,24 @@ export class OpenAICompatProvider implements AgentProvider {
           } catch {
             continue
           }
-          const usage = (chunk as { usage?: { prompt_tokens?: number; completion_tokens?: number } }).usage
+          const usage = (chunk as { usage?: CompatUsage }).usage
           if (usage) {
+            // OpenAI-style prompt_tokens INCLUDES cached tokens; split them out
+            const cached = usage.prompt_tokens_details?.cached_tokens ?? 0
             yield {
               kind: 'usage',
-              inputTokens: usage.prompt_tokens ?? 0,
+              inputTokens: Math.max(0, (usage.prompt_tokens ?? 0) - cached),
               outputTokens: usage.completion_tokens ?? 0,
+              cacheReadTokens: cached,
+              cacheWriteTokens: usage.prompt_tokens_details?.cache_write_tokens ?? 0,
             }
           }
           const delta = (chunk as { choices?: Array<{ delta?: Record<string, unknown> }> }).choices?.[0]?.delta
           if (!delta) continue
+          // OpenRouter's unified reasoning stream (summaries for Claude/OpenAI reasoners)
+          if (typeof delta.reasoning === 'string' && delta.reasoning.length > 0) {
+            yield { kind: 'thinking', text: delta.reasoning }
+          }
           if (typeof delta.content === 'string' && delta.content.length > 0) {
             roundText += delta.content
             yield { kind: 'delta', text: delta.content }

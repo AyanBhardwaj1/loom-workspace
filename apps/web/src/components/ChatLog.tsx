@@ -1,6 +1,6 @@
 import { useVirtualizer } from '@tanstack/react-virtual'
 import { clsx } from 'clsx'
-import { ArrowDown } from 'lucide-react'
+import { ArrowDown, Brain } from 'lucide-react'
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import type { AgentActivityStatus, PresenceUser, SessionEvent, SessionEventOf } from '@loom/shared'
 import { momentAgentAwakens, momentSessionStart } from '../lib/choreography'
@@ -27,6 +27,7 @@ import { Avatar } from './primitives'
 export function ChatLog({
   events,
   streamingText,
+  thinkingText = '',
   agentStatus,
   driverName,
   driverColor,
@@ -48,6 +49,8 @@ export function ChatLog({
 }: {
   events: SessionEvent[]
   streamingText: string
+  /** live reasoning since the last persisted thought */
+  thinkingText?: string
   agentStatus: AgentActivityStatus
   driverName: string
   driverColor: string
@@ -372,6 +375,8 @@ export function ChatLog({
                 <div className={clsx('stream-caret max-w-[70ch] whitespace-pre-wrap text-primary', compact ? 'text-small' : 'text-body')}>
                   {streamingText}
                 </div>
+              ) : thinkingText.trim() ? (
+                <LiveThought text={thinkingText} compact={compact} />
               ) : (
                 <div className="flex min-h-[24px] items-center gap-2 text-small text-tertiary">
                   <span className="stream-caret" />
@@ -467,6 +472,22 @@ export function ChatLog({
     </div>
   )
 }
+
+/** The reasoning stream as it happens: the live edge, never more than a few lines. */
+function LiveThought({ text, compact }: { text: string; compact: boolean }) {
+  const tail = text.length > LIVE_THOUGHT_CHARS ? '…' + text.slice(-LIVE_THOUGHT_CHARS) : text
+  return (
+    <div className={clsx('flex max-w-[70ch] items-start gap-2 text-tertiary', compact ? 'text-small' : 'text-ui')} aria-live="off">
+      <Brain size={14} strokeWidth={1.5} className="mt-[3px] shrink-0 animate-pulse text-lav-400" aria-hidden />
+      <span className="stream-caret min-w-0 whitespace-pre-wrap italic">
+        <span className="sr-only">Agent is thinking: </span>
+        {tail}
+      </span>
+    </div>
+  )
+}
+
+const LIVE_THOUGHT_CHARS = 360
 
 function itemKey(item: ReturnType<typeof toDisplayItems>[number], index: number): string {
   switch (item.kind) {

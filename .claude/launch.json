@@ -6,6 +6,13 @@
       "runtimeExecutable": "pnpm",
       "runtimeArgs": ["dev"],
       "port": 5173
+    },
+    {
+      "name": "loom-mock-live",
+      "runtimeExecutable": "node",
+      "runtimeArgs": ["apps/web/e2e/serve.mjs"],
+      "env": { "E2E_PORT": "4601", "LOOM_FAST_MOCK": "0" },
+      "port": 4601
     }
   ]
 }

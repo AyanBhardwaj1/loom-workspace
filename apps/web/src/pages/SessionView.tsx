@@ -436,6 +436,7 @@ export function SessionView() {
             testId="main-log"
             events={stream.events}
             streamingText={stream.streamingText}
+            thinkingText={stream.thinkingText}
             agentStatus={isEnded ? 'idle' : stream.agentStatus}
             driverName={session.driverName}
             driverColor={session.driverAvatarColor}

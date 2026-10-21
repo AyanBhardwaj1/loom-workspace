@@ -132,6 +132,20 @@ export interface AiSettingsUpdate {
   reasoning?: ReasoningSetting | null
 }
 
+/** One curated Claude model for the Anthropic-tab picker. */
+export interface ClaudeModelDto {
+  id: string
+  name: string
+  blurb: string
+  /** $ per million tokens */
+  promptPrice: number
+  completionPrice: number
+  /** effort levels the model accepts, low → max; [] = no effort control */
+  efforts: ReasoningEffort[]
+  /** what the API does when no effort is sent */
+  defaultEffort: string
+}
+
 /** One OpenRouter catalog row, trimmed to what the model picker shows. */
 export interface OpenRouterModelDto {
   id: string

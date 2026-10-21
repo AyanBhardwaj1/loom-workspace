@@ -14,6 +14,13 @@ import { ToolExecutor } from './tools'
 
 type UserRow = typeof import('../db/schema.sqlite').users.$inferSelect
 
+/** thoughtPayload's schema bound — a runaway reasoning stretch is truncated, never rejected */
+const MAX_THOUGHT_CHARS = 12_000
+
+function capThought(text: string): string {
+  return text.length > MAX_THOUGHT_CHARS ? text.slice(0, MAX_THOUGHT_CHARS - 1) + '…' : text
+}
+
 export interface TurnStartResult {
   ok: boolean
   error?: string
@@ -222,8 +229,24 @@ export class AgentOrchestrator {
     let errorNote: string | undefined
     let inputTokens = 0
     let outputTokens = 0
+    let cacheReadTokens = 0
+    let cacheWriteTokens = 0
+    // visible reasoning arrives as deltas; it is persisted as one `thought`
+    // per stretch, flushed when the agent moves on to its next action
+    let thinking = ''
+    const flushThought = async () => {
+      const text = thinking.trim()
+      thinking = ''
+      if (text) await sessions.appendEvent(session.id, 'thought', { text: capThought(text) })
+    }
     try {
       for await (const item of provider.runTurn(ctx)) {
+        if (item.kind === 'thinking') {
+          thinking += item.text
+          sessions.publishTransient(session.id, 'thinking_delta', { text: item.text })
+          continue
+        }
+        if (item.kind !== 'usage') await flushThought()
         switch (item.kind) {
           case 'delta':
             sessions.publishTransient(session.id, 'assistant_delta', { text: item.text })
@@ -243,6 +266,8 @@ export class AgentOrchestrator {
           case 'usage':
             inputTokens += item.inputTokens
             outputTokens += item.outputTokens
+            cacheReadTokens += item.cacheReadTokens ?? 0
+            cacheWriteTokens += item.cacheWriteTokens ?? 0
             break
           case 'error':
             // captured, not appended here — the terminal status is emitted by
@@ -256,14 +281,19 @@ export class AgentOrchestrator {
       // an abort surfaces here as the stream throws — swallow it (handled
       // below); anything else is a real failure and re-thrown to the caller
       if (!signal.aborted) throw err
+    } finally {
+      // reasoning that preceded a stop or an error still belongs in the log
+      await flushThought()
     }
 
     // record token usage + estimated cost for the turn (even a stopped one)
-    if (inputTokens > 0 || outputTokens > 0) {
+    if (inputTokens > 0 || outputTokens > 0 || cacheReadTokens > 0 || cacheWriteTokens > 0) {
       await sessions.appendEvent(session.id, 'usage', {
         inputTokens,
         outputTokens,
-        costUsd: estimateCostUsd(turnMode, turnModel, inputTokens, outputTokens),
+        cacheReadTokens,
+        cacheWriteTokens,
+        costUsd: estimateCostUsd(turnMode, turnModel, inputTokens, outputTokens, { cacheReadTokens, cacheWriteTokens }),
         model: turnModel,
         provider: turnMode,
       })

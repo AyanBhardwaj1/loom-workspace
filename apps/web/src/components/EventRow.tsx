@@ -1,6 +1,7 @@
 import NumberFlow from '@number-flow/react'
 import { clsx } from 'clsx'
 import {
+  Brain,
   Check,
   ChevronDown,
   ChevronRight,
@@ -343,6 +344,8 @@ function RowBody({
           <InlineText text={item.event.payload.text} />
         </div>
       )
+    case 'thought':
+      return <ThoughtRow event={item.event} compact={compact} />
     case 'tool':
       return <ToolChip item={item} compact={compact} />
     case 'file':
@@ -392,6 +395,42 @@ function RowBody({
     case 'suggestion':
       return <SuggestionCard item={item} compact={compact} actions={actions} />
   }
+}
+
+/* ----------------------------------------------------------------------------
+ * Thought — the agent's visible reasoning: one quiet line, expands on click
+ * ------------------------------------------------------------------------- */
+function ThoughtRow({ event, compact }: { event: SessionEventOf<'thought'>; compact: boolean }) {
+  const [open, setOpen] = useState(false)
+  const text = event.payload.text
+  const firstLine = text.replace(/\s+/g, ' ').trim()
+  const long = firstLine.length > 120 || text.includes('\n')
+  return (
+    <button
+      type="button"
+      onClick={() => long && setOpen((v) => !v)}
+      aria-expanded={long ? open : undefined}
+      className={clsx(
+        'group flex max-w-[70ch] items-start gap-2 rounded text-left text-tertiary transition-colors duration-micro',
+        long && 'hover:text-secondary',
+        compact ? 'text-small' : 'text-ui',
+      )}
+    >
+      <Brain size={14} strokeWidth={1.5} className="mt-[3px] shrink-0 text-lav-300" aria-hidden />
+      <span className={clsx('min-w-0 italic', open ? 'whitespace-pre-wrap' : 'line-clamp-1')}>
+        <span className="sr-only">Agent thought: </span>
+        {open ? text : firstLine}
+      </span>
+      {long && (
+        <ChevronRight
+          size={14}
+          strokeWidth={1.5}
+          aria-hidden
+          className={clsx('mt-[3px] shrink-0 transition-transform duration-micro', open && 'rotate-90')}
+        />
+      )}
+    </button>
+  )
 }
 
 /* ----------------------------------------------------------------------------

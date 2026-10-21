@@ -41,6 +41,10 @@ export function sessionToMarkdown(detail: SessionDetail, events: SessionEvent[])
         lines.push(e.payload.text)
         lines.push('')
         break
+      case 'thought':
+        lines.push(...e.payload.text.trim().split('\n').map((l) => `> _${l || ' '}_`))
+        lines.push('')
+        break
       case 'tool_call':
         lines.push('```tool')
         lines.push(`${e.payload.toolName}(${JSON.stringify(e.payload.input)})`)

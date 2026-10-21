@@ -23,6 +23,8 @@ export function shortId(len = 6): string {
 export interface UsageTotals {
   inputTokens: number
   outputTokens: number
+  /** prompt-cache reads — input the provider served at a steep discount */
+  cacheReadTokens: number
   costUsd: number
   /** number of turns that reported usage */
   turns: number
@@ -30,16 +32,23 @@ export interface UsageTotals {
 
 /** Sum all `usage` events into running totals (works on any event array). */
 export function sumUsage(events: Array<{ type: string; payload: unknown }>): UsageTotals {
-  const totals: UsageTotals = { inputTokens: 0, outputTokens: 0, costUsd: 0, turns: 0 }
+  const totals: UsageTotals = { inputTokens: 0, outputTokens: 0, cacheReadTokens: 0, costUsd: 0, turns: 0 }
   for (const e of events) {
     if (e.type !== 'usage') continue
-    const p = e.payload as { inputTokens: number; outputTokens: number; costUsd: number }
+    const p = e.payload as { inputTokens: number; outputTokens: number; cacheReadTokens?: number; costUsd: number }
     totals.inputTokens += p.inputTokens
     totals.outputTokens += p.outputTokens
+    totals.cacheReadTokens += p.cacheReadTokens ?? 0
     totals.costUsd += p.costUsd
     totals.turns += 1
   }
   return totals
+}
+
+/** Share of all input tokens served from the prompt cache (0–1). */
+export function cacheHitRate(totals: UsageTotals): number {
+  const total = totals.inputTokens + totals.cacheReadTokens
+  return total === 0 ? 0 : totals.cacheReadTokens / total
 }
 
 /** Compact token count: 940 → "940", 12_500 → "12.5k", 3_400_000 → "3.4M". */

@@ -13,6 +13,7 @@ import type { SessionEvent, SessionEventOf } from '@loom/shared'
 export type DisplayItem =
   | { kind: 'user'; event: SessionEventOf<'user_message'> }
   | { kind: 'assistant'; event: SessionEventOf<'assistant_message'> }
+  | { kind: 'thought'; event: SessionEventOf<'thought'> }
   | { kind: 'tool'; call: SessionEventOf<'tool_call'>; result: SessionEventOf<'tool_result'> | null }
   | { kind: 'file'; event: SessionEventOf<'file_change'> }
   | { kind: 'commit'; event: SessionEventOf<'commit'> }
@@ -56,6 +57,9 @@ export function toDisplayItems(events: SessionEvent[]): DisplayItem[] {
       case 'assistant_message':
         openToolChips.length = 0
         items.push({ kind: 'assistant', event: e })
+        break
+      case 'thought':
+        items.push({ kind: 'thought', event: e })
         break
       case 'tool_call': {
         const chip: Extract<DisplayItem, { kind: 'tool' }> = { kind: 'tool', call: e, result: null }

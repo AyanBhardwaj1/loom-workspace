@@ -1,4 +1,4 @@
-import { BRAND, type SessionEvent, type TranscriptEntry } from '@loom/shared'
+import { BRAND, type AgentTurnContext, type SessionEvent, type TranscriptEntry } from '@loom/shared'
 
 /**
  * Rebuild a condensed conversation transcript from the persisted event log.
@@ -68,6 +68,18 @@ Rules:
 - Read a file before editing it. Use edit_file for small changes, write_file for new files or rewrites.
 - Keep file paths relative. Never try to leave the workspace.
 - End the turn with a short summary of what changed.`
+}
+
+/**
+ * Per-turn context that changes as the session progresses. Kept OUT of the
+ * stable system prompt so the system block stays byte-identical (cacheable)
+ * for the whole session.
+ */
+export function agentDynamicContext(ctx: Pick<AgentTurnContext, 'fileTree'>): string {
+  return [
+    'Current files in the workspace:',
+    ctx.fileTree.length > 0 ? ctx.fileTree.map((f) => `- ${f}`).join('\n') : '(empty)',
+  ].join('\n')
 }
 
 function cap(s: string, n: number): string {

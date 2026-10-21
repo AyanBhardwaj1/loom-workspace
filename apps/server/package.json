@@ -13,7 +13,7 @@
     "gc": "tsx src/scripts/gc.ts"
   },
   "dependencies": {
-    "@anthropic-ai/sdk": "^0.39.0",
+    "@anthropic-ai/sdk": "^0.137.0",
     "@fastify/cookie": "^9.4.0",
     "@fastify/rate-limit": "9.1.0",
     "@fastify/static": "^7.0.4",
