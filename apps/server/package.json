@@ -10,7 +10,8 @@
     "test": "vitest run",
     "check": "tsc --noEmit",
     "db:generate": "drizzle-kit generate --config drizzle.config.sqlite.ts && drizzle-kit generate --config drizzle.config.pg.ts",
-    "gc": "tsx src/scripts/gc.ts"
+    "gc": "tsx src/scripts/gc.ts",
+    "eval": "tsx src/evals/run.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.137.0",
