@@ -37,6 +37,8 @@ export interface TrialResult extends Grade {
   cacheReadTokens?: number
   cacheWriteTokens?: number
   ms: number
+  /** the request never reached the model (bad key, network) — not a score */
+  infra?: boolean
 }
 
 export interface TaskRun {
@@ -191,6 +193,12 @@ async function runTrial(provider: AgentProvider, task: EvalTask): Promise<TrialR
     }
     const usage = { inputTokens, outputTokens, cacheReadTokens, cacheWriteTokens }
     if (aborter.signal.aborted) return { pass: false, reason: 'timed out', ...usage, ms: Date.now() - started }
+    // an error with zero tokens billed means nothing was evaluated — a grader
+    // like "nothing escaped the sandbox" would otherwise pass vacuously
+    const reachedModel = inputTokens + outputTokens + cacheReadTokens + cacheWriteTokens > 0
+    if (providerError && !reachedModel) {
+      return { pass: false, infra: true, reason: `the request never reached the model: ${providerError.slice(0, 160)}`, ...usage, ms: Date.now() - started }
+    }
     const grade = await task.grade(makeWorkspace(dir, tools))
     const reason = !grade.pass && providerError ? `${grade.reason} (provider: ${providerError.slice(0, 120)})` : grade.reason
     return { ...grade, reason, ...usage, ms: Date.now() - started }
@@ -212,6 +220,11 @@ export async function runEvalSuite(opts: {
       const result = await runTrial(opts.provider, task)
       trials.push(result)
       opts.onTrial?.(task.name, i, result)
+      // a dead key or network fails every remaining trial the same way
+      if (result.infra) {
+        runs.push({ task: task.name, trials })
+        return runs
+      }
     }
     runs.push({ task: task.name, trials })
   }

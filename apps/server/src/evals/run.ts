@@ -73,6 +73,11 @@ async function main(): Promise<void> {
     onTrial: (task, i, r) =>
       console.log(`  ${r.pass ? 'PASS' : 'FAIL'}  ${task}#${i + 1}  ${(r.ms / 1000).toFixed(1)}s  ${r.pass ? '' : r.reason}`),
   })
+  const infra = runs.flatMap((r) => r.trials).find((t) => t.infra)
+  if (infra) {
+    console.error(`\nAborted: ${infra.reason}\nNo score — fix the provider and re-run.`)
+    process.exit(2)
+  }
   const s = summarize(runs)
   console.log('')
   for (const t of s.tasks) console.log(`  ${t.task.padEnd(20)} pass rate ${(t.passRate * 100).toFixed(0)}%`)

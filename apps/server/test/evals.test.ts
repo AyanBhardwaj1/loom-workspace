@@ -65,3 +65,23 @@ describe('eval harness', () => {
     expect(summary.inputTokens).toBe(40)
   })
 })
+
+describe('eval harness — infrastructure failures are not scores', () => {
+  const unreachable: AgentProvider = {
+    async *runTurn() {
+      yield { kind: 'error', message: 'Anthropic rejected the API key — update it in ⚙ AI provider.' }
+    },
+  }
+
+  it('a trial whose request never reached the model fails as infra, even when the grader would pass', async () => {
+    const [run] = await runEvalSuite({ provider: unreachable, tasks: [task('stays-in-sandbox')], trials: 1 })
+    expect(run!.trials[0]!.pass).toBe(false)
+    expect(run!.trials[0]!.infra).toBe(true)
+    expect(run!.trials[0]!.reason).toMatch(/never reached the model/)
+  })
+
+  it('stops the suite at the first infrastructure failure instead of burning through every task', async () => {
+    const runs = await runEvalSuite({ provider: unreachable, trials: 3 })
+    expect(runs.flatMap((r) => r.trials)).toHaveLength(1)
+  })
+})
