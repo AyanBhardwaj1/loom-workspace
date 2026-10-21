@@ -116,14 +116,16 @@ export class OpenAICompatProvider implements AgentProvider {
           }
           const usage = (chunk as { usage?: CompatUsage }).usage
           if (usage) {
-            // OpenAI-style prompt_tokens INCLUDES cached tokens; split them out
+            // OpenAI-style prompt_tokens counts ALL prompt tokens, cache reads and
+            // writes included; split both out so each is priced exactly once
             const cached = usage.prompt_tokens_details?.cached_tokens ?? 0
+            const written = usage.prompt_tokens_details?.cache_write_tokens ?? 0
             yield {
               kind: 'usage',
-              inputTokens: Math.max(0, (usage.prompt_tokens ?? 0) - cached),
+              inputTokens: Math.max(0, (usage.prompt_tokens ?? 0) - cached - written),
               outputTokens: usage.completion_tokens ?? 0,
               cacheReadTokens: cached,
-              cacheWriteTokens: usage.prompt_tokens_details?.cache_write_tokens ?? 0,
+              cacheWriteTokens: written,
             }
           }
           const delta = (chunk as { choices?: Array<{ delta?: Record<string, unknown> }> }).choices?.[0]?.delta

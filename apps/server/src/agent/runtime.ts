@@ -70,7 +70,7 @@ export class AgentRuntime {
       model: this.model,
       maskedKey: this.maskedKey,
       source: this.source,
-      baseUrl: this.baseUrl,
+      baseUrl: this.baseUrl ? displayUrl(this.baseUrl) : null,
       reasoning: this.reasoning,
     }
   }
@@ -206,6 +206,16 @@ export class AgentRuntime {
     const { db, t } = this.dbh
     await db.delete(t.appSettings).where(eq(t.appSettings.key, SETTINGS_KEY))
     await db.insert(t.appSettings).values({ key: SETTINGS_KEY, value: JSON.stringify(stored) })
+  }
+}
+
+/** userinfo and query strings can carry credentials — never show them to members */
+function displayUrl(url: string): string {
+  try {
+    const u = new URL(url)
+    return `${u.protocol}//${u.host}${u.pathname}`.replace(/\/$/, '')
+  } catch {
+    return '(custom endpoint)'
   }
 }
 

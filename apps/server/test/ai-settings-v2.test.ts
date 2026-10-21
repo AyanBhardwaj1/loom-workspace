@@ -116,3 +116,19 @@ describe('PUT /api/settings/ai — change model/effort without re-pasting the ke
     expect((none.json() as { error: string }).error).toMatch(/API key/i)
   })
 })
+
+describe('describe() never echoes credentials embedded in a base URL', () => {
+  it('strips userinfo and query strings from the reported baseUrl', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => new Response('{}', { status: 200 })))
+    const c = await cookies()
+    const res = await app.inject({
+      method: 'PUT',
+      url: '/api/settings/ai',
+      cookies: c,
+      payload: { provider: 'openrouter', apiKey: 'sk-or-key-12345678', baseUrl: 'https://user:hunter2@llm.internal.example/v1?key=abc' },
+    })
+    const body = res.json() as { baseUrl: string }
+    expect(body.baseUrl).toBe('https://llm.internal.example/v1')
+    expect(JSON.stringify(res.json())).not.toMatch(/hunter2|key=abc/)
+  })
+})

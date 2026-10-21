@@ -372,9 +372,23 @@ export function ChatLog({
           {(streaming || showThinking) && (
             <div className={clsx('min-h-[24px]', compact ? 'py-1' : 'py-2 pl-6 pr-8')}>
               {streaming ? (
-                <div className={clsx('stream-caret max-w-[70ch] whitespace-pre-wrap text-primary', compact ? 'text-small' : 'text-body')}>
-                  {streamingText}
-                </div>
+                <>
+                  <div
+                    className={clsx(
+                      'max-w-[70ch] whitespace-pre-wrap text-primary',
+                      compact ? 'text-small' : 'text-body',
+                      !thinkingText.trim() && 'stream-caret',
+                    )}
+                  >
+                    {streamingText}
+                  </div>
+                  {/* later tool rounds reason after earlier text — keep the reasoning visible */}
+                  {thinkingText.trim() && (
+                    <div className="mt-2">
+                      <LiveThought text={thinkingText} compact={compact} />
+                    </div>
+                  )}
+                </>
               ) : thinkingText.trim() ? (
                 <LiveThought text={thinkingText} compact={compact} />
               ) : (

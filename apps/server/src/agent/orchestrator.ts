@@ -181,7 +181,7 @@ export class AgentOrchestrator {
     if (!module || !project) throw new Error('Module or project missing')
 
     await sessions.setSessionRowStatus(session.id, 'active')
-    await sessions.appendEvent(session.id, 'user_message', {
+    const userEvent = await sessions.appendEvent(session.id, 'user_message', {
       text,
       ...(suggestedBy ? { suggestedByName: suggestedBy.name, suggestedByUserId: suggestedBy.userId } : {}),
     })
@@ -190,19 +190,24 @@ export class AgentOrchestrator {
     // C3 — transcript snapshot: fold only the events since the last snapshot
     // instead of replaying the whole log every turn. O(snapshot + tail);
     // integrity (fold(snap, tail) === fold(∅, all)) is covered by tests.
+    // History is everything BEFORE this turn's request: providers append the
+    // request themselves, so folding it into the transcript sent it twice.
     const snap = this.transcriptSnapshots.get(session.id)
     const afterSeq = snap?.upToSeq ?? 0
-    const tailEvents = await sessions.getEvents(session.id, afterSeq)
-    const transcript = foldTranscript(snap?.entries ?? [], tailEvents)
-    const brief = foldBrief(snap?.brief ?? null, tailEvents)
-    const lastSeq = tailEvents.length > 0 ? (tailEvents[tailEvents.length - 1]!.seq ?? afterSeq) : afterSeq
-    const assistantTurns = (snap?.assistantTurns ?? 0) + countAssistantTurns(tailEvents)
+    const userSeq = userEvent.seq ?? Number.MAX_SAFE_INTEGER
+    const history = (await sessions.getEvents(session.id, afterSeq)).filter((e) => (e.seq ?? 0) < userSeq)
+    const transcript = foldTranscript(snap?.entries ?? [], history)
+    const historyBrief = foldBrief(snap?.brief ?? null, history)
+    // the request itself still counts toward the brief (on turn 1 it IS the goal)
+    const brief = foldBrief(historyBrief, [userEvent])
+    const lastSeq = history.length > 0 ? (history[history.length - 1]!.seq ?? afterSeq) : afterSeq
+    const assistantTurns = (snap?.assistantTurns ?? 0) + countAssistantTurns(history)
     // bound the cache: evict the oldest-inserted snapshot past 200 sessions
     if (!snap && this.transcriptSnapshots.size >= 200) {
       const oldest = this.transcriptSnapshots.keys().next().value
       if (oldest) this.transcriptSnapshots.delete(oldest)
     }
-    this.transcriptSnapshots.set(session.id, { upToSeq: lastSeq, entries: transcript, brief, assistantTurns })
+    this.transcriptSnapshots.set(session.id, { upToSeq: lastSeq, entries: transcript, brief: historyBrief, assistantTurns })
 
     const tools = new ToolExecutor(session.worktreePath)
     let announcedTools = false

@@ -48,3 +48,15 @@ describe('OpenAICompatProvider — reasoning + cache accounting', () => {
     expect(items).toContainEqual({ kind: 'usage', inputTokens: 200, outputTokens: 50, cacheReadTokens: 800, cacheWriteTokens: 0 })
   })
 })
+
+describe('OpenAICompatProvider — cache writes are not double-billed', () => {
+  it('subtracts cache writes from prompt_tokens too', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => sse([{ usage: { prompt_tokens: 1_000, completion_tokens: 5, prompt_tokens_details: { cached_tokens: 300, cache_write_tokens: 600 } } }])),
+    )
+    const items: AgentStreamItem[] = []
+    for await (const item of new OpenAICompatProvider({ apiKey: 'k', model: 'm' }).runTurn(turn())) items.push(item)
+    expect(items).toContainEqual({ kind: 'usage', inputTokens: 100, outputTokens: 5, cacheReadTokens: 300, cacheWriteTokens: 600 })
+  })
+})

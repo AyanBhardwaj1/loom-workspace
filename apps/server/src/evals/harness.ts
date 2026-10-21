@@ -31,8 +31,11 @@ export interface Workspace {
 }
 
 export interface TrialResult extends Grade {
+  /** uncached input */
   inputTokens: number
   outputTokens: number
+  cacheReadTokens?: number
+  cacheWriteTokens?: number
   ms: number
 }
 
@@ -147,6 +150,8 @@ async function runTrial(provider: AgentProvider, task: EvalTask): Promise<TrialR
   const started = Date.now()
   let inputTokens = 0
   let outputTokens = 0
+  let cacheReadTokens = 0
+  let cacheWriteTokens = 0
   try {
     for (const [rel, content] of Object.entries(task.setup ?? {})) {
       fs.mkdirSync(path.dirname(path.join(dir, rel)), { recursive: true })
@@ -173,8 +178,10 @@ async function runTrial(provider: AgentProvider, task: EvalTask): Promise<TrialR
     try {
       for await (const item of provider.runTurn(ctx)) {
         if (item.kind === 'usage') {
-          inputTokens += item.inputTokens + (item.cacheReadTokens ?? 0) + (item.cacheWriteTokens ?? 0)
+          inputTokens += item.inputTokens
           outputTokens += item.outputTokens
+          cacheReadTokens += item.cacheReadTokens ?? 0
+          cacheWriteTokens += item.cacheWriteTokens ?? 0
         } else if (item.kind === 'error') {
           providerError = item.message
         }
@@ -182,10 +189,11 @@ async function runTrial(provider: AgentProvider, task: EvalTask): Promise<TrialR
     } finally {
       clearTimeout(timer)
     }
-    if (aborter.signal.aborted) return { pass: false, reason: 'timed out', inputTokens, outputTokens, ms: Date.now() - started }
+    const usage = { inputTokens, outputTokens, cacheReadTokens, cacheWriteTokens }
+    if (aborter.signal.aborted) return { pass: false, reason: 'timed out', ...usage, ms: Date.now() - started }
     const grade = await task.grade(makeWorkspace(dir, tools))
     const reason = !grade.pass && providerError ? `${grade.reason} (provider: ${providerError.slice(0, 120)})` : grade.reason
-    return { ...grade, reason, inputTokens, outputTokens, ms: Date.now() - started }
+    return { ...grade, reason, ...usage, ms: Date.now() - started }
   } finally {
     fs.rmSync(base, { recursive: true, force: true })
   }
@@ -232,5 +240,7 @@ export function summarize(runs: TaskRun[]) {
     passHatK: share((t) => t.passHatK),
     inputTokens: all.reduce((n, t) => n + t.inputTokens, 0),
     outputTokens: all.reduce((n, t) => n + t.outputTokens, 0),
+    cacheReadTokens: all.reduce((n, t) => n + (t.cacheReadTokens ?? 0), 0),
+    cacheWriteTokens: all.reduce((n, t) => n + (t.cacheWriteTokens ?? 0), 0),
   }
 }

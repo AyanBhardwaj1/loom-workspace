@@ -63,16 +63,25 @@ git branches and agent-assisted merges. That's what makes this buildable now.
 Concretely:
 
 - `SessionEvent` (in `packages/shared`) is the atom: `user_message`,
-  `assistant_delta` (broadcast-only), `assistant_message`, `tool_call`,
+  `assistant_delta` and `thinking_delta` (broadcast-only), `assistant_message`,
+  `thought` (the agent's visible reasoning, persisted for replay), `tool_call`,
   `tool_result`, `file_change`, `commit`, `status`, `fork_marker`. The
   persisted log is the source of truth; chat UI, spectator sidebar and forking
   are just views/copies of it.
 - Every session owns a **real git branch and worktree** under `./data`. Every
   agent turn that touches files is auto-committed with the driver as author.
 - The agent runtime is one provider-agnostic loop. `ANTHROPIC_API_KEY` set →
-  real Claude (streaming + tool use). Unset → a deterministic
+  real Claude (default `claude-opus-5-5`: streaming, tool use, adaptive
+  thinking with an effort dial, prompt caching). Unset → a deterministic
   **MockAgentProvider** that narrates, calls the same sandboxed tools, and
   really builds files — the whole product works with zero API keys.
+- Teammates **watch the agent think**: summarized reasoning streams live and
+  each stretch is kept as a `thought` in the log. Every turn also gets a
+  durable session brief (the original goal + every commit) so long sessions
+  never lose what they are for.
+- **Evals** — `pnpm --filter @loom/server eval` runs six code-graded agent
+  tasks (targeted edits, cross-file fixes, runnable output, sandbox escape)
+  and reports pass@k / pass^k. Real providers need `--yes` (they cost money).
 
 ## Quickstart
 
@@ -121,8 +130,8 @@ pnpm workspaces: `apps/web` (Vite + React 18 + Tailwind + TanStack Query),
 (zod-validated event + WS protocol schemas — the contract for DB, wire and
 UI). SQLite by default, Postgres via `DATABASE_URL` (mirrored schema +
 migrations for both). Real `git` via `execa`: worktrees, branches, merges.
-Agent tools (`list_files`, `read_file`, `write_file`, `edit_file`,
-`delete_file`, allowlisted `run_command`) are hard-sandboxed to the session's
+Agent tools (`list_files`, `read_file`, `search_files`, `write_file`,
+`edit_file`, `delete_file`, allowlisted `run_command`) are hard-sandboxed to the session's
 worktree.
 
 ```

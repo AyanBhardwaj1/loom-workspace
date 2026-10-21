@@ -135,3 +135,35 @@ describe('tool contract', () => {
     }
   })
 })
+
+describe('search_files — hardening (security review)', () => {
+  it('a catastrophic regex is cut off instead of freezing the server', async () => {
+    write('a.js', 'a'.repeat(40) + ';\n')
+    const started = Date.now()
+    const res = await tools.execute('search_files', { pattern: '^(\\w+\\s?)+$', regex: true })
+    expect(Date.now() - started).toBeLessThan(5_000)
+    expect(res.ok).toBe(false)
+    expect(res.summary).toMatch(/too long|simplify/i)
+  }, 15_000)
+
+  it('never follows symlinks out of the workspace', async () => {
+    const outside = fs.mkdtempSync(path.join(os.tmpdir(), 'loom-outside-'))
+    fs.writeFileSync(path.join(outside, 'secret.env'), 'API_KEY=waitlist-secret\n')
+    fs.symlinkSync(path.join(outside, 'secret.env'), path.join(root, 'link.env'))
+    try {
+      const res = await tools.execute('search_files', { pattern: 'waitlist-secret' })
+      expect(res.content ?? '').not.toContain('waitlist-secret')
+    } finally {
+      fs.rmSync(outside, { recursive: true, force: true })
+    }
+  })
+})
+
+describe('read_file — out-of-range offset', () => {
+  it('is a clear tool error, not an inverted empty window', async () => {
+    write('short.txt', 'one\ntwo\n')
+    const res = await tools.execute('read_file', { path: 'short.txt', offset: 50 })
+    expect(res.ok).toBe(false)
+    expect(res.summary).toMatch(/past the end/)
+  })
+})

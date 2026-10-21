@@ -71,3 +71,27 @@ describe('orchestrator — the brief reaches the provider every turn', () => {
     ])
   })
 })
+
+describe('orchestrator — the current request is sent exactly once', () => {
+  it('keeps this turn\'s message out of the transcript (the provider appends it itself)', async () => {
+    const { services } = ctx
+    const user = await makeUser(services, 'Ayan', 'ayan@once.dev')
+    const project = await services.projects.createProject('Once', '', user)
+    const modules = await services.projects.listModules(project.id)
+    const session = await services.sessions.createSession(modules[0]!.id, user)
+    const seen: AgentTurnContext[] = []
+    services.runtime.provider = {
+      async *runTurn(turn) {
+        seen.push(turn)
+        yield { kind: 'message_done', fullText: `reply to ${turn.userMessage}` }
+      },
+    }
+    await (await services.orchestrator.handleUserMessage(session.id, user, 'first ask')).done
+    await (await services.orchestrator.handleUserMessage(session.id, user, 'second ask')).done
+
+    const userTexts = (t: AgentTurnContext) => t.transcript.filter((e) => e.role === 'user').map((e) => e.text)
+    expect(userTexts(seen[0]!)).toEqual([])
+    // the earlier request is history; the current one is not repeated
+    expect(userTexts(seen[1]!)).toEqual(['first ask'])
+  })
+})

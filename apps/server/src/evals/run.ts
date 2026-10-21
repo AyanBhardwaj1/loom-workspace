@@ -77,8 +77,13 @@ async function main(): Promise<void> {
   console.log('')
   for (const t of s.tasks) console.log(`  ${t.task.padEnd(20)} pass rate ${(t.passRate * 100).toFixed(0)}%`)
   console.log(`\npass@${trials} ${(s.passAtK * 100).toFixed(0)}% · pass^${trials} ${(s.passHatK * 100).toFixed(0)}%`)
-  const cost = estimateCostUsd(values.provider ?? 'mock', model, s.inputTokens, s.outputTokens)
-  console.log(`tokens ${s.inputTokens.toLocaleString()} in / ${s.outputTokens.toLocaleString()} out · ≈$${cost.toFixed(4)}`)
+  const cost = estimateCostUsd(values.provider ?? 'mock', model, s.inputTokens, s.outputTokens, {
+    cacheReadTokens: s.cacheReadTokens,
+    cacheWriteTokens: s.cacheWriteTokens,
+  })
+  console.log(
+    `tokens ${s.inputTokens.toLocaleString()} in (+${s.cacheReadTokens.toLocaleString()} cached) / ${s.outputTokens.toLocaleString()} out · ≈$${cost.toFixed(4)}`,
+  )
   process.exit(s.passHatK === 1 ? 0 : 1)
 }
 

@@ -1,6 +1,7 @@
 import fs from 'node:fs'
 import fsp from 'node:fs/promises'
 import path from 'node:path'
+import { Worker } from 'node:worker_threads'
 import { execa } from 'execa'
 import type { AgentToolExecution } from '@loom/shared'
 
@@ -12,6 +13,47 @@ const MAX_FILE_BYTES = 512 * 1024
 const MAX_READ_LINES = 2000
 const MAX_SEARCH_MATCHES = 100
 const MAX_SEARCH_LINE_CHARS = 200
+/** a backtracking regex must never hold the server's event loop hostage */
+const SEARCH_DEADLINE_MS = 2_000
+
+/**
+ * The search loop, run in a throwaway worker thread: JS regexes backtrack,
+ * and a catastrophic pattern (model-chosen, possibly prompt-injected) would
+ * otherwise freeze every session on the instance. The parent terminates the
+ * worker at the deadline. Files arrive pre-vetted (inside the root, regular).
+ */
+const SEARCH_WORKER = `
+const { parentPort, workerData } = require('node:worker_threads')
+const fs = require('node:fs')
+const path = require('node:path')
+const { root, files, pattern, regex, maxFileBytes, maxMatches, maxLineChars } = workerData
+const re = regex ? new RegExp(pattern, 'i') : null
+const needle = pattern.toLowerCase()
+const hits = []
+const filesHit = []
+for (const file of files) {
+  if (hits.length >= maxMatches) break
+  const full = path.join(root, file)
+  let text
+  try {
+    const st = fs.lstatSync(full)
+    if (!st.isFile() || st.size > maxFileBytes) continue
+    text = fs.readFileSync(full, 'utf8')
+  } catch { continue }
+  if (text.includes('\\0')) continue
+  const lines = text.split('\\n')
+  let hit = false
+  for (let i = 0; i < lines.length && hits.length < maxMatches; i++) {
+    const line = lines[i].slice(0, 2000)
+    if (!(re ? re.test(line) : line.toLowerCase().includes(needle))) continue
+    const trimmed = line.trim()
+    hits.push(file + ':' + (i + 1) + ': ' + (trimmed.length > maxLineChars ? trimmed.slice(0, maxLineChars) + '… (truncated)' : trimmed))
+    hit = true
+  }
+  if (hit) filesHit.push(file)
+}
+parentPort.postMessage({ hits, filesHit: filesHit.length })
+`
 
 export class ToolError extends Error {}
 
@@ -94,11 +136,14 @@ export class ToolExecutor {
       }
       for (const entry of entries.sort((a, b) => a.name.localeCompare(b.name))) {
         if (entry.name === '.git' || entry.name === 'node_modules') continue
+        // symlinks are never listed or followed: they are how content from
+        // outside the worktree would sneak into reads and searches
+        if (entry.isSymbolicLink()) continue
         const full = path.join(dir, entry.name)
         const rel = path.relative(this.root, full)
         if (entry.isDirectory()) {
           walk(full)
-        } else {
+        } else if (entry.isFile()) {
           out.push(rel)
         }
         if (out.length >= 500) return
@@ -126,6 +171,7 @@ export class ToolExecutor {
       return { summary: `Read ${name} (${lines.length} lines)`, ok: true, content }
     }
     const start = Math.max(1, positiveInt(input.offset) ?? 1)
+    if (start > lines.length) throw new ToolError(`offset ${start} is past the end of ${name} (${lines.length} lines)`)
     const count = Math.min(MAX_READ_LINES, positiveInt(input.limit) ?? MAX_READ_LINES)
     const end = Math.min(lines.length, start + count - 1)
     const window = lines.slice(start - 1, end).join('\n')
@@ -190,43 +236,29 @@ export class ToolExecutor {
   private async searchFiles(input: Record<string, unknown>): Promise<AgentToolExecution> {
     const pattern = typeof input.pattern === 'string' ? input.pattern : ''
     if (!pattern) throw new ToolError('"pattern" (string) is required')
-    const scope = input.path === undefined || input.path === '' ? null : rel(this.root, this.resolveSafe(input.path))
-    let test: (line: string) => boolean
-    if (input.regex === true) {
-      let re: RegExp
+    const regex = input.regex === true
+    if (regex) {
       try {
-        re = new RegExp(pattern, 'i')
+        new RegExp(pattern, 'i') // compiling is linear; only matching can explode
       } catch (err) {
         throw new ToolError(`invalid regex: ${err instanceof Error ? err.message : String(err)}`)
       }
-      test = (line) => re.test(line)
-    } else {
-      const needle = pattern.toLowerCase()
-      test = (line) => line.toLowerCase().includes(needle)
     }
+    const scope = input.path === undefined || input.path === '' ? null : rel(this.root, this.resolveSafe(input.path))
     const files = this.listTree().filter((f) => scope === null || scope === '.' || f === scope || f.startsWith(scope + path.sep))
-    const hits: string[] = []
-    const filesHit = new Set<string>()
-    for (const file of files) {
-      if (hits.length >= MAX_SEARCH_MATCHES) break
-      const full = path.join(this.root, file)
-      const stat = await fsp.stat(full)
-      if (stat.size > MAX_FILE_BYTES) continue
-      const text = await fsp.readFile(full, 'utf8')
-      if (text.includes('\0')) continue // binary
-      const lines = text.split('\n')
-      for (let i = 0; i < lines.length && hits.length < MAX_SEARCH_MATCHES; i++) {
-        // long minified lines are clipped before matching: bounds regex cost
-        const line = lines[i]!.slice(0, 2000)
-        if (!test(line)) continue
-        hits.push(`${file}:${i + 1}: ${truncate(line.trim(), MAX_SEARCH_LINE_CHARS)}`)
-        filesHit.add(file)
-      }
-    }
+    const { hits, filesHit } = await runSearchWorker({
+      root: this.root,
+      files,
+      pattern,
+      regex,
+      maxFileBytes: MAX_FILE_BYTES,
+      maxMatches: MAX_SEARCH_MATCHES,
+      maxLineChars: MAX_SEARCH_LINE_CHARS,
+    })
     if (hits.length === 0) return { summary: `No matches for "${truncate(pattern, 40)}"`, ok: true, content: '(no matches)' }
     const capped = hits.length >= MAX_SEARCH_MATCHES ? `\n(stopped at ${MAX_SEARCH_MATCHES} matches — narrow the pattern or path)` : ''
     return {
-      summary: `${hits.length} match${hits.length === 1 ? '' : 'es'} in ${filesHit.size} file${filesHit.size === 1 ? '' : 's'}`,
+      summary: `${hits.length} match${hits.length === 1 ? '' : 'es'} in ${filesHit} file${filesHit === 1 ? '' : 's'}`,
       ok: true,
       content: hits.join('\n') + capped,
     }
@@ -267,6 +299,25 @@ export class ToolExecutor {
       content: output || '(no output)',
     }
   }
+}
+
+function runSearchWorker(data: Record<string, unknown>): Promise<{ hits: string[]; filesHit: number }> {
+  return new Promise((resolve, reject) => {
+    const worker = new Worker(SEARCH_WORKER, { eval: true, workerData: data })
+    const timer = setTimeout(() => {
+      void worker.terminate()
+      reject(new ToolError(`search took too long (over ${SEARCH_DEADLINE_MS / 1000}s) — simplify the pattern or narrow the path`))
+    }, SEARCH_DEADLINE_MS)
+    worker.once('message', (msg: { hits: string[]; filesHit: number }) => {
+      clearTimeout(timer)
+      void worker.terminate()
+      resolve(msg)
+    })
+    worker.once('error', (err) => {
+      clearTimeout(timer)
+      reject(err)
+    })
+  })
 }
 
 function positiveInt(v: unknown): number | null {
