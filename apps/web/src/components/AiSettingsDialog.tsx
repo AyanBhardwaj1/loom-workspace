@@ -6,6 +6,7 @@ import {
   BRAND,
   type AiProviderKind,
   type AiSettingsDto,
+  type ClaudeModelDto,
   type OpenRouterModelDto,
   type ReasoningSetting,
 } from '@loom/shared'
@@ -13,16 +14,17 @@ import { api } from '../lib/api'
 import { Modal } from './overlay'
 import { Button, SegmentedControl, Spinner, StatusDot, cn } from './primitives'
 
-const DEFAULT_OPENROUTER_MODEL = 'anthropic/claude-sonnet-4.5'
+const DEFAULT_OPENROUTER_MODEL = 'anthropic/claude-opus-5.5'
+const DEFAULT_CLAUDE_MODEL = 'claude-opus-5-5'
 
 const PROVIDER_INFO: Record<AiProviderKind, { label: string; keyPlaceholder: string; modelPlaceholder: string }> = {
   anthropic: {
     label: 'Anthropic',
     keyPlaceholder: 'sk-ant-…',
-    modelPlaceholder: 'claude-sonnet-4-5 (default)',
+    modelPlaceholder: 'claude-opus-5-5 (default)',
   },
   openrouter: {
-    label: 'OpenRouter / compatible',
+    label: 'OpenRouter',
     keyPlaceholder: 'sk-or-…',
     modelPlaceholder: `${DEFAULT_OPENROUTER_MODEL} (default)`,
   },
@@ -41,6 +43,15 @@ export function useAiSettings() {
     queryKey: ['ai-settings'],
     queryFn: () => api.get<AiSettingsDto>('/api/settings/ai'),
     staleTime: 15_000,
+  })
+}
+
+function useClaudeModels(enabled: boolean) {
+  return useQuery({
+    queryKey: ['claude-models'],
+    queryFn: () => api.get<{ models: ClaudeModelDto[] }>('/api/settings/anthropic/models'),
+    enabled,
+    staleTime: Infinity,
   })
 }
 
@@ -198,27 +209,38 @@ function ModelCombobox({
   )
 }
 
+/** What a model offers for reasoning; null = no control, undefined = unknown id. */
+interface ReasoningInfo {
+  /** true = reasoning can't be switched off (no "Off" option) */
+  mandatory: boolean
+  /** effort levels, low → max; [] = an on/off toggle only */
+  efforts: ReadonlyArray<string>
+  defaultEffort: string | null
+}
+
 /**
- * Reasoning, from low to max — but only the levels the chosen model actually
- * advertises in the OpenRouter catalog. Toggle-only models get On/Off;
- * always-on models get a note; unknown ids get the full ladder, unverified.
+ * Reasoning, from low to max — but only the levels the chosen model accepts.
+ * Toggle-only models get On/Off; always-on models with no ladder get a note;
+ * unknown ids get the full ladder, marked unverified.
  */
 function ReasoningControl({
-  entry,
+  info,
+  allowToggle,
   modelId,
   value,
   onChange,
 }: {
-  entry: OpenRouterModelDto | undefined
+  info: ReasoningInfo | null | undefined
+  /** OpenRouter can switch reasoning on/off; Claude is effort-only */
+  allowToggle: boolean
   modelId: string
   value: ReasoningSetting | null
   onChange: (v: ReasoningSetting | null) => void
 }) {
-  const info = entry?.reasoning
-  if (entry && info === null) {
+  if (info === null) {
     return (
       <p className="text-small text-tertiary">
-        <span className="font-mono text-code">{modelId}</span> doesn’t do extended reasoning.
+        <span className="font-mono text-code">{modelId}</span> has no reasoning control.
       </p>
     )
   }
@@ -226,11 +248,11 @@ function ReasoningControl({
     return <p className="text-small text-tertiary">This model always reasons — it exposes no levels to pick.</p>
   }
 
-  const efforts = info ? info.efforts : (['low', 'medium', 'high', 'xhigh', 'max'] as const)
-  const toggleOnly = info !== undefined && info !== null && info.efforts.length === 0
+  const efforts = info ? info.efforts : ['low', 'medium', 'high', 'xhigh', 'max']
+  const toggleOnly = info !== undefined && info.efforts.length === 0
   const options: Array<{ value: string; label: string; title?: string }> = [
     { value: 'auto', label: 'Auto', title: 'Let the provider decide' },
-    ...(info?.mandatory ? [] : [{ value: 'off', label: 'Off', title: 'No reasoning tokens' }]),
+    ...(allowToggle && !info?.mandatory ? [{ value: 'off', label: 'Off', title: 'No reasoning tokens' }] : []),
     ...(toggleOnly
       ? [{ value: 'on', label: 'On', title: 'Reasoning enabled, default budget' }]
       : efforts.map((e) => ({ value: e, label: REASONING_LABELS[e] ?? e, title: `Reasoning effort: ${e}` }))),
@@ -248,10 +270,52 @@ function ReasoningControl({
       <p className="text-small text-tertiary">
         {info?.defaultEffort
           ? `Auto uses the model’s default (${info.defaultEffort}). Higher levels think longer and cost more.`
-          : entry
+          : info
             ? 'Higher levels think longer and cost more.'
             : 'Unknown model — levels shown unverified; the provider may reject some.'}
       </p>
+    </div>
+  )
+}
+
+/** The Anthropic tab's picker: current Claude models as a compact radio list. */
+function ClaudeModelList({
+  models,
+  value,
+  onPick,
+}: {
+  models: ClaudeModelDto[]
+  value: string
+  onPick: (id: string) => void
+}) {
+  return (
+    <div role="radiogroup" aria-label="Claude model" className="space-y-1">
+      {models.map((m) => {
+        const selected = m.id === value
+        return (
+          <button
+            key={m.id}
+            type="button"
+            role="radio"
+            aria-checked={selected}
+            onClick={() => onPick(m.id)}
+            className={cn(
+              'flex w-full items-center gap-3 rounded border px-3 py-2 text-left transition-colors duration-micro',
+              selected ? 'border-lav-border bg-lav-fill' : 'border-hairline hover:border-hairline-hover',
+            )}
+          >
+            <span className="min-w-0 flex-1">
+              <span className="block text-ui font-medium text-primary">{m.name}</span>
+              <span className="block truncate text-small text-tertiary">{m.blurb}</span>
+            </span>
+            <span className="tnum shrink-0 font-mono text-small text-tertiary">
+              ${m.promptPrice} / ${m.completionPrice}
+            </span>
+            {selected && <Check size={14} strokeWidth={1.5} className="shrink-0 text-lav-400" />}
+          </button>
+        )
+      })}
+      <p className="pt-0.5 text-small text-tertiary">Prices are $ per million tokens, input / output.</p>
     </div>
   )
 }
@@ -275,8 +339,23 @@ export function AiSettingsDialog({ open, onClose }: { open: boolean; onClose: ()
   const customEndpoint = baseUrl.trim() !== '' && !/openrouter\.ai/.test(baseUrl)
   const catalogQuery = useOpenRouterModels(open && provider === 'openrouter' && !customEndpoint)
   const models = catalogQuery.data?.models ?? []
-  const effectiveModel = model.trim() || DEFAULT_OPENROUTER_MODEL
+  const claudeQuery = useClaudeModels(open && provider === 'anthropic')
+  const claudeModels = claudeQuery.data?.models ?? []
+  const effectiveModel = model.trim() || (provider === 'anthropic' ? DEFAULT_CLAUDE_MODEL : DEFAULT_OPENROUTER_MODEL)
   const catalogEntry = models.find((m) => m.id === effectiveModel)
+  const claudeEntry = claudeModels.find((m) => m.id === effectiveModel)
+  const reasoningInfo: ReasoningInfo | null | undefined =
+    provider === 'anthropic'
+      ? claudeEntry
+        ? claudeEntry.efforts.length > 0
+          ? { mandatory: true, efforts: claudeEntry.efforts, defaultEffort: claudeEntry.defaultEffort }
+          : null
+        : undefined
+      : catalogEntry
+        ? catalogEntry.reasoning
+        : undefined
+  // a model/effort change on the provider already configured keeps the stored key
+  const keyOnFile = settings.data?.source === 'runtime' && settings.data.mode === provider
 
   useEffect(() => {
     if (open) {
@@ -294,17 +373,17 @@ export function AiSettingsDialog({ open, onClose }: { open: boolean; onClose: ()
   }, [open])
 
   const save = async () => {
-    if (!apiKey.trim() || busy) return
+    if ((!apiKey.trim() && !keyOnFile) || busy) return
     setBusy(true)
     setError(null)
     setSaved(false)
     try {
       await api.put<AiSettingsDto>('/api/settings/ai', {
         provider,
-        apiKey: apiKey.trim(),
+        apiKey: apiKey.trim() || undefined,
         model: model.trim() || undefined,
         baseUrl: provider === 'openrouter' && baseUrl.trim() ? baseUrl.trim() : undefined,
-        reasoning: provider === 'openrouter' && !customEndpoint ? reasoning : undefined,
+        reasoning: provider === 'anthropic' || !customEndpoint ? reasoning : undefined,
       })
       await queryClient.invalidateQueries({ queryKey: ['ai-settings'] })
       setSaved(true)
@@ -376,7 +455,7 @@ export function AiSettingsDialog({ open, onClose }: { open: boolean; onClose: ()
               <input
                 type={showKey ? 'text' : 'password'}
                 className="loom-input pr-9 font-mono text-code"
-                placeholder={PROVIDER_INFO[provider].keyPlaceholder}
+                placeholder={keyOnFile ? `Saved (${settings.data?.maskedKey}) — paste to replace` : PROVIDER_INFO[provider].keyPlaceholder}
                 value={apiKey}
                 onChange={(e) => setApiKey(e.target.value)}
                 autoComplete="off"
@@ -394,7 +473,28 @@ export function AiSettingsDialog({ open, onClose }: { open: boolean; onClose: ()
 
           <div className="block">
             <span className="mb-1 block text-small font-medium text-secondary">Model</span>
-            {provider === 'openrouter' && !customEndpoint && models.length > 0 ? (
+            {provider === 'anthropic' && claudeModels.length > 0 ? (
+              <div className="space-y-2">
+                <ClaudeModelList
+                  models={claudeModels}
+                  value={effectiveModel}
+                  onPick={(id) => {
+                    setModel(id)
+                    setReasoning(null)
+                  }}
+                />
+                <input
+                  className="loom-input font-mono text-code"
+                  placeholder="or type any Claude model id"
+                  aria-label="Custom Claude model id"
+                  value={claudeEntry ? '' : model}
+                  onChange={(e) => {
+                    setModel(e.target.value)
+                    setReasoning(null)
+                  }}
+                />
+              </div>
+            ) : provider === 'openrouter' && !customEndpoint && models.length > 0 ? (
               <ModelCombobox
                 models={models}
                 value={model}
@@ -425,10 +525,18 @@ export function AiSettingsDialog({ open, onClose }: { open: boolean; onClose: ()
             )}
           </div>
 
-          {provider === 'openrouter' && !customEndpoint && (
+          {(provider === 'anthropic' || !customEndpoint) && (
             <div className="block">
-              <span className="mb-1 block text-small font-medium text-secondary">Reasoning</span>
-              <ReasoningControl entry={catalogEntry} modelId={effectiveModel} value={reasoning} onChange={setReasoning} />
+              <span className="mb-1 block text-small font-medium text-secondary">
+                {provider === 'anthropic' ? 'Effort' : 'Reasoning'}
+              </span>
+              <ReasoningControl
+                info={reasoningInfo}
+                allowToggle={provider === 'openrouter'}
+                modelId={effectiveModel}
+                value={reasoning}
+                onChange={setReasoning}
+              />
             </div>
           )}
 
@@ -453,13 +561,18 @@ export function AiSettingsDialog({ open, onClose }: { open: boolean; onClose: ()
         {error && <div className="rounded border border-danger-border bg-danger-fill px-3 py-2 text-small text-danger">{error}</div>}
         {saved && (
           <div className="rounded border border-ok-border bg-ok-fill px-3 py-2 text-small text-ok">
-            Key verified and active — every session now chats with the real model.
+            Verified and active — every session now uses these settings.
           </div>
         )}
 
         <div className="flex items-center gap-2">
-          <Button variant="primary" className="flex-1" onClick={() => void save()} disabled={busy || !apiKey.trim()}>
-            {busy ? <Spinner className="h-4 w-4" /> : 'Save key'}
+          <Button
+            variant="primary"
+            className="flex-1"
+            onClick={() => void save()}
+            disabled={busy || (!apiKey.trim() && !keyOnFile)}
+          >
+            {busy ? <Spinner className="h-4 w-4" /> : keyOnFile && !apiKey.trim() ? 'Save changes' : 'Save key'}
           </Button>
           {current && current.mode !== 'mock' && current.source === 'runtime' && (
             <Button variant="ghost" size="md" onClick={() => void useMock()} disabled={busy}>
@@ -469,7 +582,7 @@ export function AiSettingsDialog({ open, onClose }: { open: boolean; onClose: ()
         </div>
 
         <p className="text-small leading-relaxed text-tertiary">
-          Checked with a 1-token test call, stored in this {BRAND} server's own database, and used only to call
+          Verified with the provider before saving, stored in this {BRAND} server's own database, and used only to call
           your chosen provider. It never reaches other users' browsers — teammates just see the agent get smarter.
         </p>
       </div>

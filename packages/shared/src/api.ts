@@ -124,7 +124,8 @@ export type ReasoningSetting = ReasoningEffort | 'on' | 'off'
 
 export interface AiSettingsUpdate {
   provider: AiProviderKind
-  apiKey: string
+  /** omitted = reuse the stored key (only when the provider is unchanged) */
+  apiKey?: string
   model?: string
   /** Any OpenAI-compatible endpoint (OpenRouter default; Ollama, vLLM, LM Studio work too). */
   baseUrl?: string

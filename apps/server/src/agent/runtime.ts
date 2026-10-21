@@ -76,23 +76,41 @@ export class AgentRuntime {
   }
 
   /**
-   * Validate the pasted key with a live 1-token call, persist it, apply it.
+   * Validate the key (Models API lookup / 1-token call), persist it, apply it.
    * Returns the new state or a human-readable error.
    */
   async configure(update: AiSettingsUpdate): Promise<{ ok: true; settings: AiSettingsDto } | { ok: false; error: string }> {
+    // a model/effort change on the same provider keeps the stored key — the
+    // key never round-trips through the browser to change a dropdown
+    let apiKey = update.apiKey?.trim() ?? ''
+    let baseUrl = update.baseUrl?.trim() || undefined
+    if (!apiKey) {
+      const previous = await this.readStored()
+      if (!previous || previous.provider !== update.provider) {
+        return { ok: false, error: 'An API key is required for this provider.' }
+      }
+      // a reused key may only ever go to the endpoint it was saved for —
+      // otherwise any member could redirect it to a host they control
+      const previousBase = previous.baseUrl ?? OPENROUTER_BASE_URL
+      if (baseUrl !== undefined && normalizeBase(baseUrl) !== normalizeBase(previousBase)) {
+        return { ok: false, error: 'Paste the API key again to use a different endpoint.' }
+      }
+      apiKey = previous.apiKey
+      baseUrl = previous.provider === 'openrouter' ? previousBase : undefined
+    }
     const stored: StoredAiSettings =
       update.provider === 'anthropic'
         ? {
             provider: 'anthropic',
-            apiKey: update.apiKey.trim(),
+            apiKey,
             model: update.model?.trim() || this.config.anthropicModel,
             reasoning: update.reasoning ?? null,
           }
         : {
             provider: 'openrouter',
-            apiKey: update.apiKey.trim(),
+            apiKey,
             model: update.model?.trim() || DEFAULT_OPENROUTER_MODEL,
-            baseUrl: update.baseUrl?.trim() || OPENROUTER_BASE_URL,
+            baseUrl: baseUrl ?? OPENROUTER_BASE_URL,
             reasoning: update.reasoning ?? null,
           }
 
@@ -189,6 +207,10 @@ export class AgentRuntime {
     await db.delete(t.appSettings).where(eq(t.appSettings.key, SETTINGS_KEY))
     await db.insert(t.appSettings).values({ key: SETTINGS_KEY, value: JSON.stringify(stored) })
   }
+}
+
+function normalizeBase(url: string): string {
+  return url.trim().replace(/\/+$/, '').toLowerCase()
 }
 
 function maskKey(key: string): string {

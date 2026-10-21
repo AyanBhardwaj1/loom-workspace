@@ -1,12 +1,14 @@
 import type { FastifyInstance } from 'fastify'
 import { z } from 'zod'
 import { REASONING_EFFORTS, type OpenRouterModelDto, type ReasoningEffort } from '@loom/shared'
+import { CLAUDE_MODELS } from '../agent/claudeModels'
 import type { Services } from '../services'
 import { makeRequireUser, parseBody } from './helpers'
 
 const updateSchema = z.object({
   provider: z.enum(['anthropic', 'openrouter']),
-  apiKey: z.string().min(8).max(400),
+  /** omitted = keep the stored key (model/effort change on the same provider) */
+  apiKey: z.string().min(8).max(400).optional(),
   model: z.string().max(200).optional(),
   baseUrl: z.string().url().max(300).optional(),
   reasoning: z.enum(['low', 'medium', 'high', 'xhigh', 'max', 'on', 'off']).nullish(),
@@ -83,6 +85,9 @@ export async function settingsRoutes(app: FastifyInstance, services: Services): 
   app.delete('/api/settings/ai', { preHandler: requireUser }, async () => {
     return services.runtime.clear()
   })
+
+  // the curated current-Claude list for the Anthropic tab (static: no key needed)
+  app.get('/api/settings/anthropic/models', { preHandler: requireUser }, async () => ({ models: CLAUDE_MODELS }))
 
   // The full OpenRouter catalog (~400 models) for the searchable picker,
   // proxied so the browser never talks cross-origin. Cached an hour per

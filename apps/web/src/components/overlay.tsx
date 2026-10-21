@@ -30,7 +30,7 @@ export function Modal({
       <DialogPrimitive.Portal>
         <DialogPrimitive.Overlay className="modal-scrim fixed inset-0 z-scrim bg-scrim" />
         <DialogPrimitive.Content
-          className="modal-panel fixed left-1/2 top-1/2 z-modal w-full -translate-x-1/2 -translate-y-1/2 rounded-xl border border-hairline bg-overlay p-5 shadow-modal focus:outline-none"
+          className="modal-panel fixed left-1/2 top-1/2 z-modal max-h-[calc(100dvh-2rem)] w-[calc(100%-2rem)] -translate-x-1/2 -translate-y-1/2 overflow-y-auto overscroll-contain rounded-xl border border-hairline bg-overlay p-5 shadow-modal focus:outline-none"
           style={{ maxWidth: width }}
         >
           <div className="mb-4 flex items-center justify-between gap-3">

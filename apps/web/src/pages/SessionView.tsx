@@ -5,7 +5,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import { Group, Panel, Separator, type Layout } from 'react-resizable-panels'
 import { Drawer } from 'vaul'
-import { formatCost, formatTokens, sumUsage } from '@loom/shared'
+import { cacheHitRate, formatCost, formatTokens, sumUsage } from '@loom/shared'
 import { AgentModeChip } from '../components/AiSettingsDialog'
 import { ChatLog } from '../components/ChatLog'
 import { Composer } from '../components/Composer'
@@ -256,7 +256,11 @@ export function SessionView() {
         <div className="ml-auto flex items-center gap-2.5">
           {usage.inputTokens + usage.outputTokens > 0 && (
             <Tooltip
-              content={`${usage.inputTokens.toLocaleString()} in · ${usage.outputTokens.toLocaleString()} out · ${usage.turns} turn${usage.turns === 1 ? '' : 's'}`}
+              content={`${usage.inputTokens.toLocaleString()} in · ${usage.outputTokens.toLocaleString()} out${
+                usage.cacheReadTokens > 0
+                  ? ` · ${usage.cacheReadTokens.toLocaleString()} from cache (${Math.round(cacheHitRate(usage) * 100)}% of input)`
+                  : ''
+              } · ${usage.turns} turn${usage.turns === 1 ? '' : 's'}`}
             >
               <span className="tnum hidden font-mono text-small text-tertiary lg:inline-flex lg:items-center lg:gap-1">
                 <NumberFlow
