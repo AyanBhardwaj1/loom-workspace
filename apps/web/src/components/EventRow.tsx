@@ -16,6 +16,7 @@ import {
   Lightbulb,
   Link2,
   Plus,
+  Search,
   Sparkles,
   Terminal,
   ThumbsUp,
@@ -499,6 +500,7 @@ function InlineText({ text }: { text: string }) {
 const TOOL_ICONS: Record<string, ReactNode> = {
   list_files: <FolderTree size={14} strokeWidth={1.5} />,
   read_file: <FileText size={14} strokeWidth={1.5} />,
+  search_files: <Search size={14} strokeWidth={1.5} />,
   write_file: <FilePen size={14} strokeWidth={1.5} />,
   edit_file: <FileDiff size={14} strokeWidth={1.5} />,
   delete_file: <Trash2 size={14} strokeWidth={1.5} />,
@@ -512,8 +514,9 @@ function ToolChip({ item, compact }: { item: Extract<DisplayItem, { kind: 'tool'
   const icon = TOOL_ICONS[call.payload.toolName] ?? <Terminal size={14} strokeWidth={1.5} />
   const pathArg = typeof call.payload.input.path === 'string' ? String(call.payload.input.path) : null
   const cmdArg = typeof call.payload.input.command === 'string' ? String(call.payload.input.command) : null
+  const patternArg = typeof call.payload.input.pattern === 'string' ? `“${String(call.payload.input.pattern)}”` : null
   const isCmd = call.payload.toolName === 'run_command'
-  const arg = pathArg ?? cmdArg
+  const arg = patternArg ?? pathArg ?? cmdArg
   const failed = result ? !result.payload.ok : false
 
   const toggle = () => {

@@ -36,6 +36,14 @@ export interface TranscriptEntry {
   text: string
 }
 
+/** Durable session memory: never trimmed like the transcript tail. */
+export interface SessionBrief {
+  /** the request that started the session */
+  goal: string | null
+  /** technical summaries of recent commits, oldest first */
+  commits: string[]
+}
+
 export interface AgentTurnContext {
   sessionId: string
   projectName: string
@@ -46,6 +54,8 @@ export interface AgentTurnContext {
   userMessage: string
   /** Condensed prior conversation, reconstructed from persisted events. */
   transcript: TranscriptEntry[]
+  /** Goal + commit ledger; optional so hand-built contexts (tests) can omit it. */
+  brief?: SessionBrief
   /** Relative paths of files currently in the session worktree. */
   fileTree: string[]
   /** Number of assistant messages before this turn (playbook cursor for the mock). */
@@ -74,6 +84,7 @@ export interface AgentProvider {
 export const AGENT_TOOL_NAMES = [
   'list_files',
   'read_file',
+  'search_files',
   'write_file',
   'edit_file',
   'delete_file',

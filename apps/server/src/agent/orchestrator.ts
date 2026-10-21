@@ -4,7 +4,7 @@ import type { ServerConfig } from '../env'
 import type { ProjectService } from '../projects/service'
 import type { SessionService } from '../sessions/service'
 import pino from 'pino'
-import { agentSystemPrompt, countAssistantTurns, foldTranscript } from './context'
+import { countAssistantTurns, foldBrief, foldTranscript } from './context'
 
 /** C7 — agent-turn telemetry: start/end, duration, tool timings. */
 const turnLog = pino({ name: 'agent', level: process.env.NODE_ENV === 'test' ? 'silent' : 'info' })
@@ -48,7 +48,12 @@ export class AgentOrchestrator {
    */
   private transcriptSnapshots = new Map<
     string,
-    { upToSeq: number; entries: import('@loom/shared').TranscriptEntry[]; assistantTurns: number }
+    {
+      upToSeq: number
+      entries: import('@loom/shared').TranscriptEntry[]
+      brief: import('@loom/shared').SessionBrief
+      assistantTurns: number
+    }
   >()
 
   /** Drop a session's snapshot (fork/end keep memory bounded). */
@@ -189,6 +194,7 @@ export class AgentOrchestrator {
     const afterSeq = snap?.upToSeq ?? 0
     const tailEvents = await sessions.getEvents(session.id, afterSeq)
     const transcript = foldTranscript(snap?.entries ?? [], tailEvents)
+    const brief = foldBrief(snap?.brief ?? null, tailEvents)
     const lastSeq = tailEvents.length > 0 ? (tailEvents[tailEvents.length - 1]!.seq ?? afterSeq) : afterSeq
     const assistantTurns = (snap?.assistantTurns ?? 0) + countAssistantTurns(tailEvents)
     // bound the cache: evict the oldest-inserted snapshot past 200 sessions
@@ -196,7 +202,7 @@ export class AgentOrchestrator {
       const oldest = this.transcriptSnapshots.keys().next().value
       if (oldest) this.transcriptSnapshots.delete(oldest)
     }
-    this.transcriptSnapshots.set(session.id, { upToSeq: lastSeq, entries: transcript, assistantTurns })
+    this.transcriptSnapshots.set(session.id, { upToSeq: lastSeq, entries: transcript, brief, assistantTurns })
 
     const tools = new ToolExecutor(session.worktreePath)
     let announcedTools = false
@@ -209,6 +215,7 @@ export class AgentOrchestrator {
       driverName: user.name,
       userMessage: text,
       transcript,
+      brief,
       fileTree: tools.listTree(),
       turnIndex: assistantTurns,
       signal,

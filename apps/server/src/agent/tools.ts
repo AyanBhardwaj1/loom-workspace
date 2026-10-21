@@ -8,6 +8,10 @@ const MAX_COMMAND_OUTPUT = 10_000 // 10KB
 const COMMAND_TIMEOUT_MS = 30_000
 const ALLOWED_COMMANDS = new Set(['node', 'npm', 'npx', 'pnpm', 'ls', 'cat'])
 const MAX_FILE_BYTES = 512 * 1024
+/** an unpaged read returns at most this many lines — large files are read in windows */
+const MAX_READ_LINES = 2000
+const MAX_SEARCH_MATCHES = 100
+const MAX_SEARCH_LINE_CHARS = 200
 
 export class ToolError extends Error {}
 
@@ -65,6 +69,8 @@ export class ToolExecutor {
           return await this.editFile(input)
         case 'delete_file':
           return await this.deleteFile(input)
+        case 'search_files':
+          return await this.searchFiles(input)
         case 'run_command':
           return await this.runCommand(input)
         default:
@@ -113,8 +119,22 @@ export class ToolExecutor {
     const stat = await fsp.stat(p)
     if (stat.size > MAX_FILE_BYTES) throw new ToolError('file too large to read')
     const content = await fsp.readFile(p, 'utf8')
-    const lines = content.split('\n').length
-    return { summary: `Read ${rel(this.root, p)} (${lines} lines)`, ok: true, content }
+    const lines = content.split('\n')
+    const name = rel(this.root, p)
+    const paged = input.offset !== undefined || input.limit !== undefined
+    if (!paged && lines.length <= MAX_READ_LINES) {
+      return { summary: `Read ${name} (${lines.length} lines)`, ok: true, content }
+    }
+    const start = Math.max(1, positiveInt(input.offset) ?? 1)
+    const count = Math.min(MAX_READ_LINES, positiveInt(input.limit) ?? MAX_READ_LINES)
+    const end = Math.min(lines.length, start + count - 1)
+    const window = lines.slice(start - 1, end).join('\n')
+    const more = end < lines.length ? ` — use offset ${end + 1} to read on` : ''
+    return {
+      summary: `Read ${name} lines ${start}–${end} of ${lines.length}`,
+      ok: true,
+      content: `${window}\n\n(${name}: lines ${start}–${end} of ${lines.length}${more})`,
+    }
   }
 
   private async writeFile(input: Record<string, unknown>): Promise<AgentToolExecution> {
@@ -138,14 +158,25 @@ export class ToolExecutor {
     const oldString = typeof input.old_string === 'string' ? input.old_string : null
     const newString = typeof input.new_string === 'string' ? input.new_string : null
     if (oldString === null || newString === null) throw new ToolError('"old_string" and "new_string" are required')
+    if (oldString === '') throw new ToolError('"old_string" must not be empty — use write_file to create content')
     if (!fs.existsSync(p)) throw new ToolError(`file not found: ${rel(this.root, p)}`)
     const current = await fsp.readFile(p, 'utf8')
-    if (!current.includes(oldString)) {
-      throw new ToolError(`old_string not found in ${rel(this.root, p)} — read the file first`)
+    const name = rel(this.root, p)
+    // split/join, never String.replace: a replacement string expands $& / $1 / $$
+    const parts = current.split(oldString)
+    const matches = parts.length - 1
+    if (matches === 0) throw new ToolError(`old_string not found in ${name} — read the file first`)
+    if (matches > 1 && input.replace_all !== true) {
+      throw new ToolError(
+        `old_string matches ${matches} places in ${name} — include more surrounding lines to make it unique, or set replace_all`,
+      )
     }
-    const next = current.replace(oldString, newString)
-    await fsp.writeFile(p, next)
-    return { summary: `Edited ${rel(this.root, p)}`, ok: true, content: 'ok, replacement applied' }
+    await fsp.writeFile(p, parts.join(newString))
+    return {
+      summary: matches > 1 ? `Edited ${name} (${matches} replacements)` : `Edited ${name}`,
+      ok: true,
+      content: matches > 1 ? `ok, ${matches} replacements applied` : 'ok, replacement applied',
+    }
   }
 
   private async deleteFile(input: Record<string, unknown>): Promise<AgentToolExecution> {
@@ -153,6 +184,52 @@ export class ToolExecutor {
     if (!fs.existsSync(p)) throw new ToolError(`file not found: ${rel(this.root, p)}`)
     await fsp.rm(p)
     return { summary: `Deleted ${rel(this.root, p)}`, ok: true, content: 'ok, deleted' }
+  }
+
+  /** grep for the agent: substring (default, case-insensitive) or regex, bounded output */
+  private async searchFiles(input: Record<string, unknown>): Promise<AgentToolExecution> {
+    const pattern = typeof input.pattern === 'string' ? input.pattern : ''
+    if (!pattern) throw new ToolError('"pattern" (string) is required')
+    const scope = input.path === undefined || input.path === '' ? null : rel(this.root, this.resolveSafe(input.path))
+    let test: (line: string) => boolean
+    if (input.regex === true) {
+      let re: RegExp
+      try {
+        re = new RegExp(pattern, 'i')
+      } catch (err) {
+        throw new ToolError(`invalid regex: ${err instanceof Error ? err.message : String(err)}`)
+      }
+      test = (line) => re.test(line)
+    } else {
+      const needle = pattern.toLowerCase()
+      test = (line) => line.toLowerCase().includes(needle)
+    }
+    const files = this.listTree().filter((f) => scope === null || scope === '.' || f === scope || f.startsWith(scope + path.sep))
+    const hits: string[] = []
+    const filesHit = new Set<string>()
+    for (const file of files) {
+      if (hits.length >= MAX_SEARCH_MATCHES) break
+      const full = path.join(this.root, file)
+      const stat = await fsp.stat(full)
+      if (stat.size > MAX_FILE_BYTES) continue
+      const text = await fsp.readFile(full, 'utf8')
+      if (text.includes('\0')) continue // binary
+      const lines = text.split('\n')
+      for (let i = 0; i < lines.length && hits.length < MAX_SEARCH_MATCHES; i++) {
+        // long minified lines are clipped before matching: bounds regex cost
+        const line = lines[i]!.slice(0, 2000)
+        if (!test(line)) continue
+        hits.push(`${file}:${i + 1}: ${truncate(line.trim(), MAX_SEARCH_LINE_CHARS)}`)
+        filesHit.add(file)
+      }
+    }
+    if (hits.length === 0) return { summary: `No matches for "${truncate(pattern, 40)}"`, ok: true, content: '(no matches)' }
+    const capped = hits.length >= MAX_SEARCH_MATCHES ? `\n(stopped at ${MAX_SEARCH_MATCHES} matches — narrow the pattern or path)` : ''
+    return {
+      summary: `${hits.length} match${hits.length === 1 ? '' : 'es'} in ${filesHit.size} file${filesHit.size === 1 ? '' : 's'}`,
+      ok: true,
+      content: hits.join('\n') + capped,
+    }
   }
 
   private async runCommand(input: Record<string, unknown>): Promise<AgentToolExecution> {
@@ -192,6 +269,10 @@ export class ToolExecutor {
   }
 }
 
+function positiveInt(v: unknown): number | null {
+  return typeof v === 'number' && Number.isInteger(v) && v > 0 ? v : null
+}
+
 function rel(root: string, p: string): string {
   return path.relative(root, p) || '.'
 }
@@ -209,11 +290,30 @@ export const AGENT_TOOL_DEFS = [
   },
   {
     name: 'read_file',
-    description: 'Read a file from the workspace.',
+    description:
+      'Read a file from the workspace. Files over 2000 lines are returned in windows: pass offset (1-based line) and limit to read further.',
     input_schema: {
       type: 'object' as const,
-      properties: { path: { type: 'string', description: 'relative path' } },
+      properties: {
+        path: { type: 'string', description: 'relative path' },
+        offset: { type: 'integer', description: 'first line to read (1-based)' },
+        limit: { type: 'integer', description: 'number of lines to read (max 2000)' },
+      },
       required: ['path'],
+    },
+  },
+  {
+    name: 'search_files',
+    description:
+      'Search file contents across the workspace. Case-insensitive substring by default; set regex for a regular expression. Returns up to 100 "path:line: text" matches.',
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        pattern: { type: 'string', description: 'text or regex to find' },
+        regex: { type: 'boolean', description: 'treat pattern as a regular expression' },
+        path: { type: 'string', description: 'limit the search to this file or directory' },
+      },
+      required: ['pattern'],
     },
   },
   {
@@ -230,13 +330,15 @@ export const AGENT_TOOL_DEFS = [
   },
   {
     name: 'edit_file',
-    description: 'Replace the first occurrence of old_string with new_string in a file. old_string must match exactly.',
+    description:
+      'Replace old_string with new_string in a file. old_string must match exactly ONE place (include surrounding lines to make it unique), unless replace_all is set.',
     input_schema: {
       type: 'object' as const,
       properties: {
         path: { type: 'string' },
         old_string: { type: 'string' },
         new_string: { type: 'string' },
+        replace_all: { type: 'boolean', description: 'replace every occurrence' },
       },
       required: ['path', 'old_string', 'new_string'],
     },
