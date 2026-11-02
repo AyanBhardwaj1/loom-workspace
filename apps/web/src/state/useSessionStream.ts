@@ -27,6 +27,8 @@ export interface SessionStream {
   sendMessage: (text: string) => boolean
   retryPending: (localId: string) => void
   discardPending: (localId: string) => void
+  /** a check run in flight right now (transient), or null */
+  checking: { byName: string; trigger: string } | null
 }
 
 /**
@@ -43,6 +45,7 @@ export function useSessionStream(sessionId: string | null): SessionStream {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [pending, setPending] = useState<PendingMessage[]>([])
+  const [checking, setChecking] = useState<SessionStream['checking']>(null)
   const lastSeqRef = useRef(0)
 
   useEffect(() => {
@@ -66,6 +69,7 @@ export function useSessionStream(sessionId: string | null): SessionStream {
     setThinkingText('')
     setAgentStatus('idle')
     setDetail(null)
+    setChecking(null)
 
     const seen = new Set<string>()
 
@@ -82,6 +86,7 @@ export function useSessionStream(sessionId: string | null): SessionStream {
         setEvents((prev) => [...prev, ...fresh].sort((a, b) => (a.seq ?? 0) - (b.seq ?? 0)))
       }
       for (const e of fresh) {
+        if (e.type === 'check_run') setChecking(null)
         if (e.type === 'assistant_message') setStreamingText('')
         if (e.type === 'thought' || e.type === 'assistant_message') setThinkingText('')
         if (e.type === 'status') {
@@ -170,6 +175,8 @@ export function useSessionStream(sessionId: string | null): SessionStream {
         if (msg.event.type === 'assistant_delta') {
           deltaBuffer += msg.event.payload.text
           scheduleFlush()
+        } else if (msg.event.type === 'check_started') {
+          setChecking({ byName: msg.event.payload.byName, trigger: msg.event.payload.trigger })
         } else if (msg.event.type === 'thinking_delta') {
           thinkingBuffer += msg.event.payload.text
           scheduleFlush()
@@ -248,5 +255,5 @@ export function useSessionStream(sessionId: string | null): SessionStream {
 
   useEffect(() => setPending([]), [sessionId])
 
-  return { detail, events, streamingText, thinkingText, agentStatus, loading, error, pending, sendMessage, retryPending, discardPending }
+  return { detail, events, streamingText, thinkingText, agentStatus, loading, error, pending, sendMessage, retryPending, discardPending, checking }
 }

@@ -7,6 +7,37 @@ the runtime environment**, and **`LOOM_DATA_DIR` must be persistent** — it
 holds every project's git repository and every session's worktree. Lose it and
 you lose the product's real state.
 
+## Option 0 — Vercel (serverless, no server to run)
+
+Vercel functions have no persistent disk and can't hold WebSockets, so Loom
+has a **serverless platform mode** (`LOOM_PLATFORM=serverless`, set
+automatically by the build below):
+
+- project repos live **in Postgres** (a small content-addressed git in
+  `vgit_*` tables) and are materialized into `/tmp` on demand;
+- realtime runs over **HTTP long-polling** (`/api/rt/poll`, `/api/rt/send`)
+  fed by a DB outbox (`rt_outbox`), with presence from tab heartbeats
+  (`rt_clients`);
+- turn leases, stop requests and wheel offers live in a TTL'd kv (`rt_kv`), so
+  any instance can serve any request; agent turns outlive their request via
+  `waitUntil`.
+
+```bash
+# 1. a Postgres database (Neon works well) → its pooled connection string
+vercel link --project loom
+vercel env add DATABASE_URL production --sensitive   # paste the connection string
+openssl rand -hex 32 | vercel env add COOKIE_SECRET production --sensitive
+printf production | vercel env add NODE_ENV production
+printf 1 | vercel env add COOKIE_SECURE production
+# 2. build the Build Output (web in poll mode + the bundled server) and ship it
+pnpm deploy:vercel
+```
+
+Only `.vercel/output` is uploaded — never `data/`, `.env` or the source tree.
+Production has no dev quick-login: people sign up with email + password. The
+whole e2e suite runs in this mode locally:
+`VITE_LOOM_REALTIME=poll pnpm --filter @loom/web build && LOOM_PLATFORM=serverless pnpm --filter @loom/web e2e`.
+
 ## Option 1 — Docker Compose (app + Postgres), any host
 
 ```bash

@@ -1,7 +1,7 @@
 import fs from 'node:fs'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
-import { GitService } from '../src/git/gitService'
+
 import { makeTestServices, makeUser, type TestContext } from './util'
 
 let ctx: TestContext
@@ -74,7 +74,7 @@ describe('fork mechanics', () => {
     const forkHtml = fs.readFileSync(path.join(fork.worktreePath, 'index.html'), 'utf8')
     expect(forkHtml).toContain('waitlist')
     expect(forkHtml).not.toContain('feature-grid')
-    const git = new GitService(project.repoPath)
+    const git = services.projects.gitFor(project)
     expect(await git.currentSha(fork.branchName)).toBe(
       firstCommit.type === 'commit' ? firstCommit.payload.commitSha : '',
     )

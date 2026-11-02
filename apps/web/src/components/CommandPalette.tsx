@@ -109,12 +109,12 @@ export function CommandPalette() {
                 key={s.id}
                 value={`watch ${s.driverName} ${s.title}`}
                 onSelect={() => go(`/p/${detail!.id}/s/${s.id}`)}
-                icon={<CircleDot size={16} strokeWidth={1.5} className="text-lav-400" />}
+                icon={<CircleDot size={16} strokeWidth={1.5} className="text-signal-400" />}
               >
                 <span className="min-w-0 truncate">
                   {s.title} <span className="text-tertiary">— {s.driverName}</span>
                 </span>
-                <span className="ml-auto h-1.5 w-1.5 shrink-0 rounded-full bg-lav-500" aria-hidden />
+                <span className="ml-auto h-1.5 w-1.5 shrink-0 rounded-full bg-signal-500" aria-hidden />
               </Row>
             ))}
           </Group>
@@ -134,7 +134,7 @@ export function CommandPalette() {
                 }
                 icon={<SquareTerminal size={16} strokeWidth={1.5} />}
               >
-                Start session in {m.emoji} {m.name}
+                Start session in {m.name}
               </Row>
             ))}
             {liveSessions.slice(0, 6).map((s) => (
@@ -208,7 +208,7 @@ export function CommandPalette() {
               icon={<LayoutGrid size={16} strokeWidth={1.5} />}
             >
               <span className="min-w-0 truncate">{p.name}</span>
-              {p.activeSessionCount > 0 && <span className="ml-auto h-1.5 w-1.5 shrink-0 rounded-full bg-lav-500" aria-hidden />}
+              {p.activeSessionCount > 0 && <span className="ml-auto h-1.5 w-1.5 shrink-0 rounded-full bg-signal-500" aria-hidden />}
             </Row>
           ))}
         </Group>
@@ -264,10 +264,10 @@ function Row({
     <Command.Item
       value={value}
       onSelect={onSelect}
-      className="relative flex h-9 cursor-pointer select-none items-center gap-2.5 rounded px-2.5 text-ui text-secondary data-[selected=true]:bg-lav-fill data-[selected=true]:text-primary"
+      className="relative flex h-9 cursor-pointer select-none items-center gap-2.5 rounded px-2.5 text-ui text-secondary data-[selected=true]:bg-signal-fill data-[selected=true]:text-primary"
     >
       {/* 2px lavender left rule on the selected row (display toggled in index.css) */}
-      <span aria-hidden className="palette-rule absolute bottom-1 left-0 top-1 w-[2px] rounded-full bg-lav-500" />
+      <span aria-hidden className="palette-rule absolute bottom-1 left-0 top-1 w-[2px] rounded-full bg-signal-500" />
       <span className="shrink-0 text-tertiary">{icon}</span>
       {children}
     </Command.Item>

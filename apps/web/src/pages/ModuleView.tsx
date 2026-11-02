@@ -21,6 +21,7 @@ import { api } from '../lib/api'
 import { timeAgo, useNow } from '../lib/time'
 import { useAuth } from '../state/auth'
 import { useProject } from './ProjectShell'
+import { unitCode } from '../lib/identity'
 
 type SessionWithCount = SessionSummary & { changeCount: number; tokens: number; costUsd: number }
 
@@ -109,15 +110,12 @@ export function ModuleView() {
         </Link>
 
         <header className="mb-8 mt-3 flex flex-wrap items-start gap-4">
-          <span
-            aria-hidden
-            className="flex h-12 w-12 shrink-0 items-center justify-center rounded-lg border border-hairline bg-inset text-h2"
-          >
-            {module.emoji}
+          <span aria-hidden className="tnum font-display flex h-14 shrink-0 items-center bg-primary px-3 text-h2 text-canvas">
+            {unitCode(detailQuery.data?.modules ?? [], module.id)}
           </span>
           <div className="min-w-0 flex-1">
             <div className="flex flex-wrap items-center gap-2.5">
-              <h1 className="text-balance text-display text-primary">{module.name}</h1>
+              <h1 className="font-display text-balance text-display text-primary">{module.name}</h1>
               <Pill tone={STATUS_TONE[module.status]}>{module.status}</Pill>
             </div>
             <p className="mt-1 max-w-[65ch] text-ui text-secondary">{module.description}</p>

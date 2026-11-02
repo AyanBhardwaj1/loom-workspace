@@ -2,7 +2,8 @@ import { cva, type VariantProps } from 'class-variance-authority'
 import { clsx, type ClassValue } from 'clsx'
 import { forwardRef, type ButtonHTMLAttributes, type HTMLAttributes, type KeyboardEvent, type ReactNode } from 'react'
 import { extendTailwindMerge } from 'tailwind-merge'
-import { WovenMark } from './Wordmark'
+import { UnitMark } from './Wordmark'
+import { identityColor } from '../lib/identity'
 
 /**
  * tailwind-merge must know the role-named type scale: otherwise it reads
@@ -26,22 +27,23 @@ export function cn(...inputs: ClassValue[]): string {
  * Routine interaction is CSS-only and nearly instant (--t-micro/fast).
  * ------------------------------------------------------------------------- */
 export const buttonVariants = cva(
-  'inline-flex select-none items-center justify-center gap-1.5 whitespace-nowrap rounded font-medium transition-[color,background-color,border-color,transform] duration-micro ease-standard active:translate-y-px disabled:pointer-events-none disabled:text-disabled',
+  'inline-flex select-none items-center justify-center gap-1.5 whitespace-nowrap font-semibold uppercase tracking-[0.04em] transition-[color,background-color,border-color,transform] duration-micro ease-standard active:translate-y-px disabled:pointer-events-none disabled:text-disabled',
   {
     variants: {
       variant: {
+        // ink slab; the one place red appears on a resting control is hover/press
         primary:
-          'bg-lav-500 text-on-accent hover:bg-lav-400 active:bg-lav-600 disabled:bg-raised',
+          'bg-primary text-canvas hover:bg-signal-500 hover:text-on-accent active:bg-signal-600 disabled:bg-raised',
         outline:
-          'border border-hairline bg-transparent text-primary hover:border-hairline-hover hover:bg-raised active:bg-overlay',
-        ghost: 'text-secondary hover:bg-raised hover:text-primary active:bg-overlay',
+          'border border-hairline-strong bg-surface text-primary hover:bg-primary hover:text-canvas active:bg-signal-500 active:text-on-accent',
+        ghost: 'text-secondary hover:bg-raised hover:text-primary active:bg-inset',
         danger:
-          'border border-hairline text-danger hover:border-danger-border hover:bg-danger-fill active:bg-danger-fill',
+          'border border-danger-border text-danger hover:bg-danger hover:text-on-accent active:bg-signal-600',
       },
       size: {
-        sm: 'h-7 px-2.5 text-small',
-        md: 'h-8 px-3 text-ui',
-        lg: 'h-9 px-3.5 text-ui',
+        sm: 'h-7 px-2.5 text-[11px]',
+        md: 'h-8 px-3.5 text-small',
+        lg: 'h-10 px-5 text-ui',
       },
     },
     defaultVariants: { variant: 'outline', size: 'md' },
@@ -84,11 +86,11 @@ export function LivePill({ label = 'Live', className }: { label?: string; classN
   return (
     <span
       className={cn(
-        'inline-flex h-5 items-center gap-1.5 rounded-full bg-lav-500 pl-1.5 pr-2 text-small font-medium text-on-accent',
+        'telemetry inline-flex h-5 items-center gap-1.5 bg-signal-500 px-1.5 text-on-accent',
         className,
       )}
     >
-      <span aria-hidden className="h-1.5 w-1.5 animate-soft-pulse rounded-full bg-on-accent" />
+      <span aria-hidden className="h-1.5 w-1.5 animate-soft-pulse bg-on-accent" />
       {label}
     </span>
   )
@@ -104,21 +106,24 @@ export function Pill({
   className?: string
 }) {
   const tones = {
-    neutral: 'text-secondary border-hairline',
-    ok: 'text-ok border-ok-border',
-    warn: 'text-warn border-warn-border',
-    danger: 'text-danger border-danger-border',
-    accent: 'text-lav-300 border-lav-border',
+    neutral: 'text-secondary',
+    ok: 'text-ok',
+    warn: 'text-warn',
+    danger: 'text-danger',
+    accent: 'text-signal-300',
   }
+  // a bracketed telemetry tag: [ BUILDING ]
   return (
+    // brackets are drawn, not text (and given empty alt text, so screen readers skip them) —
+    // the label's text content stays exactly its words
     <span
       className={cn(
-        'inline-flex h-5 items-center gap-1 whitespace-nowrap rounded-full border px-2 text-small',
+        "telemetry inline-flex h-5 items-center gap-1 whitespace-nowrap before:content-['['_/_''] after:content-[']'_/_'']",
         tones[tone],
         className,
       )}
     >
-      {typeof children === 'string' ? children.charAt(0).toUpperCase() + children.slice(1) : children}
+      {children}
     </span>
   )
 }
@@ -152,7 +157,12 @@ export function SectionLabel({
   className?: string
   as?: 'h2' | 'h3' | 'div'
 }) {
-  return <Tag className={cn('flex items-center gap-2 text-small font-medium text-tertiary', className)}>{children}</Tag>
+  // telemetry label ruled to the edge: LIVE NOW ————————
+  return (
+    <Tag className={cn('telemetry flex items-center gap-2 text-secondary after:h-px after:flex-1 after:bg-hairline', className)}>
+      {children}
+    </Tag>
+  )
 }
 
 /** Page title block: display heading, one line of context, actions on the right. */
@@ -168,10 +178,10 @@ export function PageHeader({
   className?: string
 }) {
   return (
-    <header className={cn('flex flex-wrap items-end justify-between gap-x-6 gap-y-3', className)}>
+    <header className={cn('flex flex-wrap items-end justify-between gap-x-6 gap-y-4 border-b-2 border-hairline-strong pb-4', className)}>
       <div className="min-w-0">
-        <h1 className="text-balance text-display text-primary">{title}</h1>
-        {meta && <div className="mt-1 text-ui text-secondary">{meta}</div>}
+        <h1 className="font-display text-balance text-display text-primary">{title}</h1>
+        {meta && <div className="telemetry mt-3 text-secondary">{meta}</div>}
       </div>
       {actions && <div className="flex shrink-0 items-center gap-2">{actions}</div>}
     </header>
@@ -187,9 +197,9 @@ export const Card = forwardRef<HTMLDivElement, HTMLAttributes<HTMLDivElement> & 
       <div
         ref={ref}
         className={cn(
-          'rounded-lg border border-hairline bg-surface',
+          'border border-hairline-strong bg-surface',
           interactive &&
-            'transition-colors duration-fast ease-standard hover:border-hairline-hover hover:bg-raised',
+            'transition-[background-color,box-shadow,transform] duration-fast ease-standard hover:-translate-x-0.5 hover:-translate-y-0.5 hover:shadow-[4px_4px_0_0_var(--text-primary)] motion-reduce:hover:translate-x-0 motion-reduce:hover:translate-y-0',
           className,
         )}
         {...props}
@@ -223,8 +233,10 @@ export function Avatar({
   return (
     <span
       title={title ?? name}
+      role="img"
+      aria-label={title ?? name}
       className={cn('inline-flex shrink-0 select-none items-center justify-center rounded-full font-semibold', sizes[size], className)}
-      style={{ backgroundColor: color, color: 'var(--text-on-identity)' }}
+      style={{ backgroundColor: identityColor(color), color: 'var(--text-on-identity)' }}
     >
       {initials(name)}
     </span>
@@ -303,7 +315,7 @@ export function SegmentedControl<T extends string>({
     >
       <span
         aria-hidden
-        className="absolute bottom-0.5 top-0.5 rounded-[4px] bg-lav-500 transition-transform duration-micro ease-standard"
+        className="absolute bottom-0.5 top-0.5 rounded-[4px] bg-signal-500 transition-transform duration-micro ease-standard"
         style={{
           width: `calc((100% - 4px) / ${options.length})`,
           transform: `translateX(${idx * 100}%)`,
@@ -335,13 +347,18 @@ export function SegmentedControl<T extends string>({
  * Feedback & meta-states
  * ------------------------------------------------------------------------- */
 /** 9.1 — the weave loader: three threads crossing instead of a generic ring. */
-export function Spinner({ className }: { className?: string }) {
+export function Spinner({ className, decorative = false }: { className?: string; /** inside a parent that already announces */ decorative?: boolean }) {
   return (
-    <span role="status" aria-label="Loading" className={cn('inline-block h-4 w-4', className)}>
+    <span
+      role={decorative ? undefined : 'status'}
+      aria-label={decorative ? undefined : 'Loading'}
+      aria-hidden={decorative || undefined}
+      className={cn('inline-block h-4 w-4', className)}
+    >
       <svg viewBox="0 0 16 16" className="weave-spinner h-full w-full" fill="none" aria-hidden>
-        <line x1="1" y1="5" x2="15" y2="5" stroke="var(--lav-500)" strokeWidth="1.5" />
+        <line x1="1" y1="5" x2="15" y2="5" stroke="var(--signal-500)" strokeWidth="1.5" />
         <line x1="1" y1="8" x2="15" y2="8" stroke="var(--hairline-strong)" strokeWidth="1.5" />
-        <line x1="1" y1="11" x2="15" y2="11" stroke="var(--lav-300)" strokeWidth="1.5" />
+        <line x1="1" y1="11" x2="15" y2="11" stroke="var(--signal-300)" strokeWidth="1.5" />
       </svg>
     </span>
   )
@@ -376,7 +393,7 @@ export function EmptyState({
 }) {
   return (
     <div className={cn('flex flex-col items-center justify-center gap-2 px-6 py-14 text-center', className)}>
-      <WovenMark size={24} className="text-primary opacity-20" />
+      <UnitMark size={22} className="text-primary opacity-25" />
       <div className="text-ui font-medium text-secondary">{title}</div>
       {hint && <div className="max-w-sm text-small text-tertiary">{hint}</div>}
       {action && <div className="mt-3">{action}</div>}
@@ -387,7 +404,7 @@ export function EmptyState({
 /** Errors state what happened and the next step. Never "Oops". */
 export function ErrorState({ message, onRetry }: { message: string; onRetry?: () => void }) {
   return (
-    <div className="flex flex-col items-center gap-3 rounded-lg border border-danger-border bg-danger-fill px-6 py-8 text-center">
+    <div role="alert" className="flex flex-col items-center gap-3 border border-danger-border bg-danger-fill px-6 py-8 text-center">
       <div className="text-ui text-danger">{message}</div>
       {onRetry && (
         <Button variant="outline" size="sm" onClick={onRetry}>
@@ -406,7 +423,7 @@ export function StatusDot({ tone, className }: { tone: 'ok' | 'warn' | 'danger' 
     ok: 'bg-ok',
     warn: 'bg-warn',
     danger: 'bg-danger',
-    accent: 'bg-lav-500',
+    accent: 'bg-signal-500',
     idle: 'bg-hairline-strong',
   }
   return <span aria-hidden className={cn('inline-block h-1.5 w-1.5 rounded-full', tones[tone], className)} />

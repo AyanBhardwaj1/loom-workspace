@@ -1,7 +1,7 @@
 import fs from 'node:fs'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
-import { GitService } from '../src/git/gitService'
+
 import { makeTestServices, makeUser, type TestContext } from './util'
 
 let ctx: TestContext
@@ -53,7 +53,7 @@ describe('full mock session (integration)', () => {
     expect(html).toContain('waitlist')
 
     // --- commit really in git log, authored by the driver
-    const git = new GitService(project.repoPath)
+    const git = services.projects.gitFor(project)
     const log = await git.log(session.branchName)
     expect(log.length).toBe(2) // initial + agent turn
     expect(log[0]!.authorName).toBe('Ada')

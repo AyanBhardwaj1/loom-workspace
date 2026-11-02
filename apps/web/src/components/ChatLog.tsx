@@ -1,6 +1,7 @@
 import { useVirtualizer } from '@tanstack/react-virtual'
 import { clsx } from 'clsx'
 import { ArrowDown, Brain } from 'lucide-react'
+import { identityColor } from '../lib/identity'
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import type { AgentActivityStatus, PresenceUser, SessionEvent, SessionEventOf } from '@loom/shared'
 import { momentAgentAwakens, momentSessionStart } from '../lib/choreography'
@@ -140,9 +141,17 @@ export function ChatLog({
     if (el) el.scrollTo({ top: el.scrollHeight, behavior })
   }
 
+  // pinned to the live edge until the reader scrolls UP. Rows are measured after
+  // they render (a test-case card is far taller than the estimate), and the
+  // virtualizer's own scroll corrections must not count as "the reader left".
+  const pinnedRef = useRef(true)
+  const lastTopRef = useRef(0)
   useEffect(() => {
     if (atBottom) scrollToBottom()
   }, [items.length, streamingText, agentStatus, atBottom])
+  useEffect(() => {
+    if (pinnedRef.current) scrollToBottom()
+  }, [contentH])
 
   useEffect(() => {
     scrollToBottom()
@@ -151,7 +160,11 @@ export function ChatLog({
   const onScroll = () => {
     const el = containerRef.current
     if (!el) return
-    setAtBottom(el.scrollTop + el.clientHeight >= el.scrollHeight - 90)
+    const nearBottom = el.scrollTop + el.clientHeight >= el.scrollHeight - 90
+    if (nearBottom) pinnedRef.current = true
+    else if (el.scrollTop < lastTopRef.current - 4) pinnedRef.current = false
+    lastTopRef.current = el.scrollTop
+    setAtBottom(pinnedRef.current)
     reportReading()
   }
 
@@ -247,6 +260,7 @@ export function ChatLog({
       return seq !== null && seq >= jumpToSeq
     })
     if (idx >= 0) {
+      pinnedRef.current = false
       setAtBottom(false)
       virtualizer.scrollToIndex(idx, { align: 'center' })
       setFlashSeq(jumpToSeq)
@@ -263,7 +277,7 @@ export function ChatLog({
       <span aria-live="polite" role="status" className="sr-only">
         {announcement}
       </span>
-      <div ref={containerRef} onScroll={onScroll} className={clsx('min-h-0 flex-1 overflow-y-auto', compact ? 'px-3 py-2' : 'px-6 py-4')}>
+      <div ref={containerRef} onScroll={onScroll} tabIndex={-1} data-log-scroller className={clsx('min-h-0 flex-1 overflow-y-auto outline-none', compact ? 'px-3 py-2' : 'px-6 py-4')}>
         <div ref={contentRef} className={clsx('relative mx-auto', !compact && 'max-w-[760px]')}>
           {items.length === 0 && !streaming && !showThinking && (
             <div className="flex h-full items-center justify-center py-16 text-center text-small text-tertiary">
@@ -343,7 +357,7 @@ export function ChatLog({
                     {p.failed ? (
                       <span role="alert" className="text-small text-danger">Not sent</span>
                     ) : (
-                      <span role="status" aria-label="Sending…" className="inline-block h-3 w-3 animate-spin rounded-full border border-hairline-strong border-t-lav-500" style={{ animationDuration: '0.8s' }} />
+                      <span role="status" aria-label="Sending…" className="inline-block h-3 w-3 animate-spin rounded-full border border-hairline-strong border-t-signal-500" style={{ animationDuration: '0.8s' }} />
                     )}
                   </span>
                 </div>
@@ -426,7 +440,7 @@ export function ChatLog({
                 }
               >
                 <span className="text-[20px] leading-none">{f.emoji}</span>
-                <span className="reaction-name block text-center text-[10px]" style={{ color: f.byColor }}>
+                <span className="reaction-name block text-center text-[10px]" style={{ color: 'var(--text-primary)', background: identityColor(f.byColor) }}>
                   {f.byName}
                 </span>
               </span>
@@ -449,7 +463,7 @@ export function ChatLog({
               ))}
           </span>
           <span className="inline-flex items-center gap-1 text-small font-medium text-tertiary">
-            <span aria-hidden className="h-1.5 w-1.5 rounded-full bg-lav-500" />
+            <span aria-hidden className="h-1.5 w-1.5 rounded-full bg-signal-500" />
             live
           </span>
         </div>
@@ -461,7 +475,7 @@ export function ChatLog({
             <Suspense
               fallback={
                 <div className="flex justify-center py-10">
-                  <span className="inline-block h-4 w-4 animate-spin rounded-full border border-hairline-strong border-t-lav-500" style={{ animationDuration: '0.8s' }} />
+                  <span className="inline-block h-4 w-4 animate-spin rounded-full border border-hairline-strong border-t-signal-500" style={{ animationDuration: '0.8s' }} />
                 </div>
               }
             >
@@ -474,6 +488,7 @@ export function ChatLog({
       {!atBottom && (
         <button
           onClick={() => {
+            pinnedRef.current = true
             setAtBottom(true)
             scrollToBottom('smooth')
           }}
@@ -492,7 +507,7 @@ function LiveThought({ text, compact }: { text: string; compact: boolean }) {
   const tail = text.length > LIVE_THOUGHT_CHARS ? '…' + text.slice(-LIVE_THOUGHT_CHARS) : text
   return (
     <div className={clsx('flex max-w-[70ch] items-start gap-2 text-tertiary', compact ? 'text-small' : 'text-ui')} aria-live="off">
-      <Brain size={14} strokeWidth={1.5} className="mt-[3px] shrink-0 animate-pulse text-lav-400" aria-hidden />
+      <Brain size={14} strokeWidth={1.5} className="mt-[3px] shrink-0 animate-pulse text-signal-400" aria-hidden />
       <span className="stream-caret min-w-0 whitespace-pre-wrap italic">
         <span className="sr-only">Agent is thinking: </span>
         {tail}

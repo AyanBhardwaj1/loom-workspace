@@ -23,7 +23,7 @@ export function useHighlightedLines(code: string, path: string): ThemedToken[][]
       try {
         const loaded = hl.getLoadedLanguages()
         const useLang = loaded.includes(lang) ? lang : 'text'
-        const result = hl.codeToTokensBase(code, { lang: useLang as never, theme: 'loom-charcoal' })
+        const result = hl.codeToTokensBase(code, { lang: useLang as never, theme: 'loom-print' })
         if (alive) setTokens(result)
       } catch {
         if (alive) setTokens([])

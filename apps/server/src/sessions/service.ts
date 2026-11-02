@@ -17,7 +17,7 @@ import {
 } from '@loom/shared'
 import type { DbHandle } from '../db/client'
 import type { ServerConfig } from '../env'
-import { GitService } from '../git/gitService'
+import { openRepo, type Repo } from '../git/repo'
 import { projectTopic, sessionTopic, type EventBus } from '../realtime/bus'
 
 type SessionRow = typeof import('../db/schema.sqlite').sessions.$inferSelect
@@ -39,8 +39,8 @@ export class SessionService {
     private config: ServerConfig,
   ) {}
 
-  gitForRepo(repoPath: string): GitService {
-    return new GitService(repoPath)
+  gitForRepo(repoPath: string): Repo {
+    return openRepo(repoPath, { config: this.config, dbh: this.dbh })
   }
 
   // -------------------------------------------------------------------------
@@ -148,6 +148,16 @@ export class SessionService {
   }
 
   /** All persisted events with seq > afterSeq, in order. */
+  /** highest persisted seq in a session (0 when empty) */
+  async lastSeq(sessionId: string): Promise<number> {
+    const { db, t } = this.dbh
+    const rows = await db
+      .select({ n: sql<number>`coalesce(max(${t.sessionEvents.seq}), 0)` })
+      .from(t.sessionEvents)
+      .where(eq(t.sessionEvents.sessionId, sessionId))
+    return Number(rows[0]?.n ?? 0)
+  }
+
   async getEvents(sessionId: string, afterSeq = 0, limit = 5000): Promise<SessionEvent[]> {
     const { db, t } = this.dbh
     const rows = await db
@@ -272,7 +282,7 @@ export class SessionService {
   }
 
   /** Latest commit sha authored in this module (via changes), falling back to main. */
-  private async latestModuleCommit(moduleId: string, git: GitService): Promise<string> {
+  private async latestModuleCommit(moduleId: string, git: Repo): Promise<string> {
     const { db, t } = this.dbh
     const rows = await db
       .select({ sha: t.changes.commitSha })
@@ -562,6 +572,7 @@ export class SessionService {
       status: 'idle',
       note: `${to.name} is now driving`,
       newDriverUserId: to.id,
+      previousDriverUserId: fromUserId,
       newDriverName: to.name,
       newDriverColor: to.avatarColor,
     })

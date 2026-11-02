@@ -10,6 +10,9 @@ import { ModuleView } from './pages/ModuleView'
 import { ProjectDashboard } from './pages/ProjectDashboard'
 import { ProjectShell } from './pages/ProjectShell'
 import { ReplayView } from './pages/ReplayView'
+import { RoomView } from './pages/RoomView'
+import { LedgerPage } from './pages/LedgerPage'
+import { BoardPage } from './pages/BoardPage'
 import { SessionView } from './pages/SessionView'
 import { SharedView } from './pages/SharedView'
 import { useAuth } from './state/auth'
@@ -50,6 +53,9 @@ export default function App() {
           <Route index element={<ProjectDashboard />} />
           <Route path="m/:moduleId" element={<ModuleView />} />
           <Route path="s/:sessionId" element={<SessionView />} />
+          <Route path="room" element={<RoomView />} />
+          <Route path="ledger" element={<LedgerPage />} />
+          <Route path="board" element={<BoardPage />} />
           <Route path="history" element={<HistoryPage />} />
         </Route>
         <Route path="*" element={<Navigate to="/" replace />} />

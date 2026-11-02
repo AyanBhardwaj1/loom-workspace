@@ -1,5 +1,7 @@
 import { parseServerMessage, type ClientMessage, type ServerMessage } from '@loom/shared'
 
+export type PreviewPresenceFrame = Omit<Extract<ClientMessage, { t: 'preview_presence' }>, 't' | 'sessionId'>
+
 type MessageListener = (msg: ServerMessage) => void
 type OpenListener = () => void
 export type ConnectionStatus = 'open' | 'reconnecting'
@@ -22,8 +24,127 @@ class WSClient {
   private reconnectTimer: ReturnType<typeof setTimeout> | null = null
   private closedByUser = false
   private viewing: string | null = null
+  private reading: { sessionId: string; eventId: string | null } | null = null
+
+  // ---- HTTP long-poll transport (serverless hosts like Vercel: no sockets) ----
+  private readonly polling = import.meta.env.VITE_LOOM_REALTIME === 'poll'
+  private readonly clientId = `tab-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`
+  private pollRunning = false
+  private pollAbort: AbortController | null = null
+  private pollCursor: number | null = null
+  private pollFresh = true
+  private seenOids = new Set<number>()
+  private outbox: ClientMessage[] = []
+  private outboxTimer: ReturnType<typeof setTimeout> | null = null
+
+  private dispatch(msg: ServerMessage): void {
+    for (const l of [...this.listeners]) l(msg)
+  }
+
+  private async pollLoop(): Promise<void> {
+    if (this.pollRunning) return
+    this.pollRunning = true
+    let delay = 800
+    while (!this.closedByUser) {
+      const abort = new AbortController()
+      this.pollAbort = abort
+      try {
+        const res = await fetch('/api/rt/poll', {
+          method: 'POST',
+          credentials: 'same-origin',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({
+            clientId: this.clientId,
+            cursor: this.pollCursor,
+            sessions: [...this.sessionSubs.keys()],
+            projects: [...this.projectSubs.keys()],
+            viewing: this.viewing,
+            reading: this.reading && this.reading.sessionId === this.viewing ? this.reading.eventId : null,
+            // answer at once after a state change or a reconnect; otherwise hold the line
+            waitMs: this.pollFresh ? 0 : 8000,
+          }),
+          signal: abort.signal,
+        })
+        if (!res.ok) throw new Error(`poll ${res.status}`)
+        const data = (await res.json()) as { cursor: number; messages: unknown[] }
+        const wasOpen = this.status === 'open'
+        this.pollCursor = data.cursor
+        this.pollFresh = false
+        delay = 800
+        this.setStatus('open')
+        // the first good poll after a gap is a (re)open: consumers re-catchup
+        if (!wasOpen) for (const l of [...this.openListeners]) l()
+        for (const raw of data.messages) {
+          // the server re-sends a small overlap window; deliver each outbox row once
+          const oid = (raw as { _oid?: unknown })._oid
+          if (typeof oid === 'number') {
+            if (this.seenOids.has(oid)) continue
+            this.seenOids.add(oid)
+            if (this.seenOids.size > 4000) this.seenOids = new Set([...this.seenOids].slice(-2000))
+          }
+          const msg = parseServerMessage(JSON.stringify(raw))
+          if (msg) this.dispatch(msg)
+        }
+      } catch (err) {
+        if (abort.signal.aborted) continue // a deliberate re-poll (state changed)
+        this.setStatus('reconnecting')
+        this.pollFresh = true
+        const jitter = 0.75 + Math.random() * 0.5
+        await new Promise((r) => setTimeout(r, Math.round(delay * jitter)))
+        delay = Math.min(delay * 1.6, 8000)
+        void err
+      }
+    }
+    this.pollRunning = false
+  }
+
+  /** subscriptions/viewing changed: re-poll now so the server (and presence) catch up */
+  private kickPoll(): void {
+    if (!this.polling) return
+    this.pollFresh = true
+    this.pollAbort?.abort()
+  }
+
+  private queueSend(msg: ClientMessage): void {
+    // pointer moves are latest-wins per session: only the newest needs to travel
+    if (msg.t === 'preview_presence' && msg.kind === 'move') {
+      this.outbox = this.outbox.filter((m) => !(m.t === 'preview_presence' && m.kind === 'move' && m.sessionId === msg.sessionId))
+    }
+    this.outbox.push(msg)
+    if (this.outboxTimer) return
+    this.outboxTimer = setTimeout(() => void this.flushOutbox(), msg.t === 'preview_presence' ? 120 : 0)
+  }
+
+  private async flushOutbox(): Promise<void> {
+    this.outboxTimer = null
+    const batch = this.outbox
+    this.outbox = []
+    if (batch.length === 0) return
+    try {
+      const res = await fetch('/api/rt/send', {
+        method: 'POST',
+        credentials: 'same-origin',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ clientId: this.clientId, messages: batch.map((m) => JSON.stringify(m)) }),
+      })
+      if (!res.ok) throw new Error(`send ${res.status}`)
+      const data = (await res.json()) as { replies: unknown[] }
+      for (const raw of data.replies) {
+        const msg = parseServerMessage(JSON.stringify(raw))
+        if (msg) this.dispatch(msg)
+      }
+    } catch {
+      // surface it like a socket error so optimistic UI marks the send as failed
+      this.dispatch({ t: 'error', code: 'network', message: 'Connection lost — try again in a second.' })
+    }
+  }
 
   connect(): void {
+    if (this.polling) {
+      this.closedByUser = false
+      void this.pollLoop()
+      return
+    }
     if (this.ws && (this.ws.readyState === WebSocket.OPEN || this.ws.readyState === WebSocket.CONNECTING)) return
     this.closedByUser = false
     const proto = location.protocol === 'https:' ? 'wss' : 'ws'
@@ -61,12 +182,17 @@ class WSClient {
 
   disconnect(): void {
     this.closedByUser = true
+    if (this.polling) {
+      this.pollAbort?.abort()
+      void fetch('/api/rt/leave', { method: 'POST', credentials: 'same-origin', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ clientId: this.clientId }), keepalive: true }).catch(() => {})
+    }
     if (this.reconnectTimer) clearTimeout(this.reconnectTimer)
     this.ws?.close()
     this.ws = null
   }
 
   isOpen(): boolean {
+    if (this.polling) return this.status === 'open'
     return this.ws?.readyState === WebSocket.OPEN
   }
 
@@ -98,6 +224,19 @@ class WSClient {
   }
 
   private raw(msg: ClientMessage): void {
+    if (this.polling) {
+      // subscriptions and presence are declared on every poll, not sent
+      if (msg.t === 'sub' || msg.t === 'unsub' || msg.t === 'sub_project' || msg.t === 'unsub_project' || msg.t === 'viewing') {
+        this.kickPoll()
+        return
+      }
+      if (msg.t === 'reading') {
+        this.reading = { sessionId: msg.sessionId, eventId: msg.eventId }
+        return
+      }
+      this.queueSend(msg)
+      return
+    }
     if (this.ws?.readyState === WebSocket.OPEN) {
       this.ws.send(JSON.stringify(msg))
     }
@@ -156,6 +295,16 @@ class WSClient {
     return true
   }
 
+  /** Driver redirects the running agent; the server hands it over at the next tool boundary. */
+  steer(sessionId: string, text: string): boolean {
+    if (!this.isOpen()) {
+      this.connect()
+      return false
+    }
+    this.raw({ t: 'steer', sessionId, text })
+    return true
+  }
+
   /** Driver interrupts the in-flight turn. */
   stop(sessionId: string): void {
     this.raw({ t: 'stop', sessionId })
@@ -195,6 +344,11 @@ class WSClient {
     return true
   }
 
+  /** Live co-testing: relay one frame from this viewer's preview iframe (callers pre-validate). */
+  previewPresence(sessionId: string, frame: PreviewPresenceFrame): void {
+    this.raw({ t: 'preview_presence', sessionId, ...frame })
+  }
+
   /** F9: driver offers the wheel to a member. */
   handoffOffer(sessionId: string, toUserId: string): void {
     this.raw({ t: 'handoff_offer', sessionId, toUserId })
@@ -208,6 +362,11 @@ class WSClient {
   /** C4: called on visibilitychange→visible — reconnect now or re-catchup. */
   resyncAfterWake(): void {
     if (this.closedByUser) return
+    if (this.polling) {
+      this.kickPoll()
+      for (const l of [...this.openListeners]) l()
+      return
+    }
     if (this.isOpen()) {
       // socket survived; consumers re-fetch anything they missed
       for (const l of [...this.openListeners]) l()

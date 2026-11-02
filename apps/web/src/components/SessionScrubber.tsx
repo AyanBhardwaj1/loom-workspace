@@ -1,6 +1,7 @@
 import { useMemo, useRef, useState } from 'react'
 import type { SessionEvent } from '@loom/shared'
 import { cn } from './primitives'
+import { identityColor } from '../lib/identity'
 
 /**
  * 4.1 — the session as a density strip: event bursts read as ridges, with
@@ -142,7 +143,7 @@ export function SessionScrubber({
         {cursor !== null && (
           <span
             aria-hidden
-            className="absolute bottom-0 top-0 w-px bg-lav-500"
+            className="absolute bottom-0 top-0 w-px bg-signal-500"
             style={{ left: `${(position / maxSeq) * 100}%` }}
           />
         )}
@@ -152,16 +153,16 @@ export function SessionScrubber({
             aria-hidden
             className={cn(
               'absolute top-1/2 -translate-x-1/2 -translate-y-1/2',
-              g.kind === 'fork' && 'text-lav-300',
+              g.kind === 'fork' && 'text-signal-300',
             )}
             style={{ left: `${g.x}%` }}
           >
             {g.kind === 'commit' ? (
-              <span className="block h-[7px] w-[7px] rounded-full" style={{ background: driverColor }} />
+              <span className="block h-[7px] w-[7px] rounded-full" style={{ background: identityColor(driverColor) }} />
             ) : g.kind === 'fork' ? (
               <span className="block h-0 w-0 border-b-[6px] border-l-[4px] border-r-[4px] border-b-current border-l-transparent border-r-transparent" />
             ) : g.kind === 'handoff' ? (
-              <span className="block h-[6px] w-[6px] rotate-45 rounded-[1px] border border-lav-border bg-overlay" />
+              <span className="block h-[6px] w-[6px] rotate-45 rounded-[1px] border border-signal-border bg-overlay" />
             ) : (
               <span className="block h-[6px] w-[6px] rotate-45 rounded-[1px] bg-warn" />
             )}

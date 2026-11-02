@@ -1,6 +1,7 @@
 import type { FastifyInstance } from 'fastify'
 import { z } from 'zod'
-import type { BranchInfo, ProjectDetail } from '@loom/shared'
+import { evaluateMergeGate } from '@loom/shared'
+import type { BranchInfo, ContributionRow, ProjectDetail, ProjectLedger, SpendRow } from '@loom/shared'
 import { moduleStatusSchema } from '@loom/shared'
 import { eq } from 'drizzle-orm'
 import type { Services } from '../services'
@@ -191,6 +192,8 @@ export async function projectRoutes(app: FastifyInstance, services: Services): P
     const git = projects.gitFor(project)
     const { db, t } = dbh
     const branchNames = await git.listSessionBranches()
+    const policy = await projects.getPolicy(id)
+    const memberCount = await projects.memberCount(id)
     const out: BranchInfo[] = []
     for (const branchName of branchNames) {
       const { ahead, behind } = await git.aheadBehind(branchName)
@@ -214,7 +217,17 @@ export async function projectRoutes(app: FastifyInstance, services: Services): P
       } catch {
         lastCommitSha = null
       }
+      const gate = session
+        ? evaluateMergeGate({
+            events: await sessions.getEvents(session.id, 0),
+            driverUserId: session.driverUserId,
+            mergerUserId: req.currentUser.id,
+            memberCount,
+            mode: policy.mergeGate,
+          })
+        : null
       out.push({
+        gate,
         branchName,
         aheadOfMain: ahead,
         behindMain: behind,
@@ -230,16 +243,205 @@ export async function projectRoutes(app: FastifyInstance, services: Services): P
     return { branches: out }
   })
 
+  /**
+   * The ledger: spend attributed to whoever was driving when it was spent
+   * (handoffs move the meter), grouped by member, module and session — and
+   * a per-person record of what everyone contributed, straight from the logs.
+   */
+  app.get('/api/projects/:id/ledger', { preHandler: requireUser }, async (req, reply) => {
+    const { id } = req.params as { id: string }
+    const project = await memberProject(id, req.currentUser.id, reply)
+    if (!project) return
+    const { db, t } = dbh
+    const sessionRows = await db.select().from(t.sessions).where(eq(t.sessions.projectId, id))
+    const memberRows = await db
+      .select({ id: t.users.id, name: t.users.name, avatarColor: t.users.avatarColor })
+      .from(t.projectMembers)
+      .innerJoin(t.users, eq(t.projectMembers.userId, t.users.id))
+      .where(eq(t.projectMembers.projectId, id))
+    const people = new Map(memberRows.map((u) => [u.id, u]))
+    const modules = new Map((await projects.listModules(id)).map((m) => [m.id, m.name]))
+    const spend = { member: new Map<string, SpendRow>(), module: new Map<string, SpendRow>(), session: new Map<string, SpendRow>() }
+    const add = (bucket: Map<string, SpendRow>, key: string, label: string, cost: number, tokens: number, color?: string) => {
+      const row = bucket.get(key) ?? { key, label, color, costUsd: 0, tokens: 0, turns: 0 }
+      row.costUsd += cost
+      row.tokens += tokens
+      row.turns += 1
+      bucket.set(key, row)
+    }
+    const contrib = new Map<string, ContributionRow>()
+    const c = (userId: string | null | undefined) => {
+      if (!userId || !people.has(userId)) return null
+      let row = contrib.get(userId)
+      if (!row) {
+        const u = people.get(userId)!
+        row = { userId, name: u.name, avatarColor: u.avatarColor, prompts: 0, steers: 0, suggestions: 0, suggestionsAccepted: 0, verdicts: 0, failsCaught: 0, approvals: 0, comments: 0, forks: 0, merges: 0 }
+        contrib.set(userId, row)
+      }
+      return row
+    }
+    for (const s of sessionRows) {
+      const events = await sessions.getEvents(s.id, 0)
+      // the driver at the start of the log: before the first handoff, the wheel was with its previous driver
+      const firstHandoff = events.find((e) => e.type === 'status' && e.payload.newDriverUserId)
+      let driver = firstHandoff && firstHandoff.type === 'status' && firstHandoff.payload.previousDriverUserId ? firstHandoff.payload.previousDriverUserId : s.driverUserId
+      const accepted = new Set(events.flatMap((e) => (e.type === 'suggestion_decision' && e.payload.decision === 'accepted' ? [e.payload.suggestionId] : [])))
+      const plans = new Map(events.flatMap((e) => (e.type === 'test_plan' ? [[e.payload.planId, e] as const] : [])))
+      for (const e of events) {
+        if (e.type === 'status' && e.payload.newDriverUserId) driver = e.payload.newDriverUserId
+        if (e.type === 'fork_marker') continue
+        switch (e.type) {
+          case 'usage': {
+            const tokens = e.payload.inputTokens + e.payload.outputTokens
+            const u = people.get(driver)
+            add(spend.member, driver, u?.name ?? 'Former member', e.payload.costUsd, tokens, u?.avatarColor)
+            add(spend.module, s.moduleId, modules.get(s.moduleId) ?? 'Module', e.payload.costUsd, tokens)
+            add(spend.session, s.id, s.title, e.payload.costUsd, tokens)
+            break
+          }
+          case 'user_message': {
+            const r = c(driver)
+            if (r) r.prompts += 1
+            break
+          }
+          case 'steer': {
+            const r = c(e.payload.byUserId)
+            if (r) r.steers += 1
+            break
+          }
+          case 'suggestion': {
+            const r = c(e.payload.suggesterUserId)
+            if (r) {
+              r.suggestions += 1
+              if (accepted.has(e.payload.suggestionId)) r.suggestionsAccepted += 1
+            }
+            break
+          }
+          case 'test_verdict': {
+            const r = c(e.payload.byUserId)
+            if (r && plans.has(e.payload.planId)) {
+              r.verdicts += 1
+              if (e.payload.verdict === 'fail') r.failsCaught += 1
+            }
+            break
+          }
+          case 'approval_decision': {
+            const r = c(e.payload.byUserId)
+            if (r) r.approvals += 1
+            break
+          }
+          case 'annotation': {
+            const r = c(e.payload.authorUserId)
+            if (r && e.payload.kind === 'comment') r.comments += 1
+            break
+          }
+        }
+      }
+      if (s.parentSessionId) {
+        const r = c(s.driverUserId)
+        if (r) r.forks += 1
+      }
+    }
+    const changeRows = await db.select().from(t.changes).where(eq(t.changes.projectId, id))
+    for (const ch of changeRows) {
+      if (ch.branchName !== 'main') continue
+      const r = c(ch.authorUserId)
+      if (r) r.merges += 1
+    }
+    const sorted = (m: Map<string, SpendRow>) => [...m.values()].sort((a, b) => b.costUsd - a.costUsd || b.tokens - a.tokens)
+    const byMember = sorted(spend.member)
+    const ledger: ProjectLedger = {
+      totalUsd: byMember.reduce((n, r) => n + r.costUsd, 0),
+      totalTokens: byMember.reduce((n, r) => n + r.tokens, 0),
+      byMember,
+      byModule: sorted(spend.module),
+      bySession: sorted(spend.session).slice(0, 12),
+      contributions: [...contrib.values()].sort((a, b) => b.prompts + b.verdicts + b.steers + b.suggestions - (a.prompts + a.verdicts + a.steers + a.suggestions)),
+    }
+    return ledger
+  })
+
+  // the room's rules: anyone can see them; the owner sets the gate and guards; any member can freeze
+  app.get('/api/projects/:id/policy', { preHandler: requireUser }, async (req, reply) => {
+    const { id } = req.params as { id: string }
+    const project = await memberProject(id, req.currentUser.id, reply)
+    if (!project) return
+    return { policy: await projects.getPolicy(id), isOwner: project.createdBy === req.currentUser.id }
+  })
+
+  app.put('/api/projects/:id/policy', { preHandler: requireUser }, async (req, reply) => {
+    const { id } = req.params as { id: string }
+    const project = await memberProject(id, req.currentUser.id, reply)
+    if (!project) return
+    const body = parseBody(
+      z.object({
+        mergeGate: z.enum(['enforce', 'warn', 'off']).optional(),
+        guardedActions: z.boolean().optional(),
+        protectedPaths: z.array(z.string().trim().min(1).max(120)).max(30).optional(),
+        frozen: z.boolean().optional(),
+      }),
+      req.body,
+      reply,
+    )
+    if (!body) return
+    const current = await projects.getPolicy(id)
+    const isOwner = project.createdBy === req.currentUser.id
+    const ownerOnly = body.mergeGate !== undefined || body.guardedActions !== undefined || body.protectedPaths !== undefined
+    if (ownerOnly && !isOwner) return reply.code(403).send({ error: 'Only the project owner changes the merge gate and guards' })
+    const next = {
+      ...current,
+      ...(body.mergeGate !== undefined ? { mergeGate: body.mergeGate } : {}),
+      ...(body.guardedActions !== undefined ? { guardedActions: body.guardedActions } : {}),
+      ...(body.protectedPaths !== undefined ? { protectedPaths: body.protectedPaths } : {}),
+      ...(body.frozen !== undefined ? { frozen: body.frozen, frozenBy: body.frozen ? req.currentUser.name : null } : {}),
+    }
+    await projects.setPolicy(id, next)
+    if (body.frozen !== undefined && body.frozen !== current.frozen) {
+      services.sessions.publishProjectUpdate(id, { kind: 'policy', frozen: next.frozen, by: req.currentUser.name })
+    }
+    return { policy: next, isOwner }
+  })
+
   app.post('/api/projects/:id/merge', { preHandler: requireUser }, async (req, reply) => {
     const { id } = req.params as { id: string }
     const project = await memberProject(id, req.currentUser.id, reply)
     if (!project) return
-    const body = parseBody(z.object({ branchName: z.string().min(1) }), req.body, reply)
+    const body = parseBody(
+      z.object({ branchName: z.string().min(1), override: z.object({ reason: z.string().trim().min(4).max(300) }).optional() }),
+      req.body,
+      reply,
+    )
     if (!body) return
     if (!/^session\//.test(body.branchName)) {
       return reply.code(400).send({ error: 'Only session branches can be merged' })
     }
-    const result = await merge.mergeBranch(id, body.branchName, req.currentUser)
+    // the verified-to-merge gate: enforced here, shown everywhere
+    const owning = await services.sessions.getSessionByBranch(id, body.branchName)
+    let override: { by: string; reason: string } | undefined
+    let unverified: string[] | undefined
+    if (owning) {
+      const policy = await projects.getPolicy(id)
+      const gate = evaluateMergeGate({
+        events: await sessions.getEvents(owning.id, 0),
+        driverUserId: owning.driverUserId,
+        mergerUserId: req.currentUser.id,
+        memberCount: await projects.memberCount(id),
+        mode: policy.mergeGate,
+      })
+      if (gate.mode === 'warn') {
+        const open = gate.checks.filter((c) => c.status === 'fail').map((c) => c.label.toLowerCase())
+        if (open.length > 0) unverified = open
+      }
+      if (!gate.ok) {
+        // only the project owner may override, and the reason is written into history
+        if (!body.override) return reply.code(409).send({ error: 'This work isn’t verified for main yet', gate })
+        if (project.createdBy !== req.currentUser.id) {
+          return reply.code(403).send({ error: 'Only the project owner can override the merge gate', gate })
+        }
+        override = { by: req.currentUser.name, reason: body.override.reason }
+      }
+    }
+    const result = await merge.mergeBranch(id, body.branchName, req.currentUser, { override, unverified })
     // F13 — the branch's driver hears their work reached main
     if (result.ok) {
       const branchSession = await services.sessions.getSessionByBranch(id, body.branchName)

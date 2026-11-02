@@ -2,7 +2,37 @@ import fs from 'node:fs'
 import path from 'node:path'
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify'
 import type { Services } from '../services'
+import { BRIDGE_JS } from '../preview/bridge'
+import { signValue, unsignValue } from '../auth/cookies'
 import { makeRequireUser } from './helpers'
+
+/**
+ * Signed preview URLs. The iframe is sandboxed (opaque origin), so the
+ * browser treats every subresource request it makes — styles.css, app.js,
+ * images — as cross-site and never attaches our SameSite=Lax cookie. With
+ * cookie auth alone the document loads and every asset 401s (Chrome then
+ * blocks them as ORB). A short-lived capability in the PATH fixes that:
+ * relative URLs inherit it, and it names exactly one user + one workspace.
+ * Membership is still re-checked on every request, so removing someone from
+ * a project revokes their links immediately.
+ */
+const PREVIEW_TOKEN_TTL_MS = 8 * 60 * 60 * 1000
+type PreviewGrant = { k: 's' | 'm' | 'l'; i: string; u: string; e: number }
+
+export function mintPreviewToken(grant: Omit<PreviewGrant, 'e'>, secret: string, now = Date.now()): string {
+  const body = Buffer.from([grant.k, grant.i, grant.u, (now + PREVIEW_TOKEN_TTL_MS).toString(36)].join('~')).toString('base64url')
+  // domain-separated from session cookies: a cookie value can never verify as a preview token
+  return signValue(`pv1.${body}`, secret)
+}
+
+export function readPreviewToken(token: string, secret: string, now = Date.now()): PreviewGrant | null {
+  const raw = unsignValue(token, secret)
+  if (!raw || !raw.startsWith('pv1.')) return null
+  const [k, i, u, exp, extra] = Buffer.from(raw.slice(4), 'base64url').toString('utf8').split('~')
+  if ((k !== 's' && k !== 'm' && k !== 'l') || !i || !u || !exp || extra !== undefined) return null
+  const e = parseInt(exp, 36)
+  return Number.isFinite(e) && e > now ? { k, i, u, e } : null
+}
 
 /**
  * Live preview of what a session (or merged main) has built. The worktree
@@ -149,9 +179,19 @@ function serveFromRoot(root: string, rawSubpath: string, reply: FastifyReply): v
   sendFile(resolved, reply)
 }
 
+const BRIDGE_TAG = '<script src="/preview-kit/bridge.js" defer></script>'
+
 function sendFile(filePath: string, reply: FastifyReply): void {
   const type = CONTENT_TYPES[path.extname(filePath).toLowerCase()] ?? 'application/octet-stream'
-  reply.type(type).send(fs.readFileSync(filePath))
+  const body = fs.readFileSync(filePath)
+  if (!type.startsWith('text/html')) {
+    reply.type(type).send(body)
+    return
+  }
+  // live co-testing: every page gets the presence bridge (script-src 'self' allows it)
+  const html = body.toString('utf8')
+  const injected = /<\/body>/i.test(html) ? html.replace(/<\/body>(?![\s\S]*<\/body>)/i, `${BRIDGE_TAG}</body>`) : html + BRIDGE_TAG
+  reply.type(type).send(injected)
 }
 
 function directoryIndex(root: string, subpath: string): string {
@@ -177,10 +217,10 @@ function directoryIndex(root: string, subpath: string): string {
 
 function placeholderPage(bodyHtml: string): string {
   return `<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><style>
-    body{margin:0;height:100vh;display:flex;align-items:center;justify-content:center;background:#0a0a0f;color:#9a99b0;font-family:system-ui,-apple-system,sans-serif}
-    .box{max-width:32rem;padding:2rem;text-align:center;line-height:1.6;font-size:14px}
-    code{background:#1a1a24;padding:2px 6px;border-radius:6px;color:#b9aef8;font-size:.9em}
-    a{color:#8b7cf6}
+    body{margin:0;height:100vh;display:flex;align-items:center;justify-content:center;background:#f4f4f0;color:#3b3b37;font-family:ui-sans-serif,system-ui,-apple-system,sans-serif}
+    .box{max-width:32rem;padding:1.5rem 2rem;border:2px solid #111;background:#fbfbf8;text-align:left;line-height:1.6;font-size:14px}
+    code{background:#e9e8e2;padding:1px 5px;color:#111;font-family:ui-monospace,monospace;font-size:.9em}
+    a{color:#111;text-decoration-color:#d01414;text-underline-offset:3px}
   </style></head><body><div class="box">${bodyHtml}</div></body></html>`
 }
 
@@ -189,6 +229,11 @@ function escapeHtml(s: string): string {
 }
 
 export async function previewRoutes(app: FastifyInstance, services: Services): Promise<void> {
+  // the co-testing bridge: public, static, cacheable — it holds no data
+  app.get('/preview-kit/bridge.js', async (_req, reply) => {
+    reply.header('Cache-Control', 'public, max-age=300').type('text/javascript; charset=utf-8').send(BRIDGE_JS)
+  })
+
   const { projects, sessions } = services
   const requireUser = makeRequireUser(services)
 
@@ -210,6 +255,8 @@ export async function previewRoutes(app: FastifyInstance, services: Services): P
       return reply.code(404).type('text/html').send(placeholderPage('Session not found.'))
     }
     if (!(await memberOrDeny(session.projectId, req, reply))) return
+    const owner = await projects.getProject(session.projectId)
+    if (owner) await projects.gitFor(owner).ensureCheckout(session.worktreePath)
     serveFromRoot(session.worktreePath, (req.params as { '*'?: string })['*'] ?? '', reply)
   }
   app.get('/preview/session/:sessionId', { preHandler: requireUser }, serveSession)
@@ -223,8 +270,70 @@ export async function previewRoutes(app: FastifyInstance, services: Services): P
       return reply.code(404).type('text/html').send(placeholderPage('Project not found.'))
     }
     if (!(await memberOrDeny(projectId, req, reply))) return
+    await projects.gitFor(project).ensureCheckout(project.repoPath)
     serveFromRoot(project.repoPath, (req.params as { '*'?: string })['*'] ?? '', reply)
   }
+  // --- live main: everyone's work in progress combined (rebuilt when anyone's work moves)
+  const serveLive = async (req: FastifyRequest, reply: FastifyReply) => {
+    const { projectId } = req.params as { projectId: string; '*'?: string }
+    if (!(await projects.getProject(projectId))) return reply.code(404).type('text/html').send(placeholderPage('Project not found.'))
+    if (!(await memberOrDeny(projectId, req, reply))) return
+    await services.liveMain.get(projectId)
+    serveFromRoot(services.liveMain.dirFor(projectId), (req.params as { '*'?: string })['*'] ?? '', reply)
+  }
+  app.get('/preview/live/:projectId', { preHandler: requireUser }, serveLive)
+  app.get('/preview/live/:projectId/*', { preHandler: requireUser }, serveLive)
+
   app.get('/preview/main/:projectId', { preHandler: requireUser }, serveMain)
   app.get('/preview/main/:projectId/*', { preHandler: requireUser }, serveMain)
+
+  // --- mint a signed URL for the in-app (sandboxed) frame
+  app.get('/api/preview-url', { preHandler: requireUser }, async (req, reply) => {
+    const q = req.query as { session?: string; main?: string; live?: string }
+    let grant: Omit<PreviewGrant, 'e'>
+    if (typeof q.session === 'string') {
+      const session = await sessions.getSession(q.session)
+      if (!session) return reply.code(404).send({ error: 'Session not found' })
+      if (!(await projects.isMember(session.projectId, req.currentUser.id))) return reply.code(403).send({ error: 'Not a member of this project' })
+      grant = { k: 's', i: session.id, u: req.currentUser.id }
+    } else if (typeof q.main === 'string') {
+      if (!(await projects.getProject(q.main))) return reply.code(404).send({ error: 'Project not found' })
+      if (!(await projects.isMember(q.main, req.currentUser.id))) return reply.code(403).send({ error: 'Not a member of this project' })
+      grant = { k: 'm', i: q.main, u: req.currentUser.id }
+    } else if (typeof q.live === 'string') {
+      if (!(await projects.getProject(q.live))) return reply.code(404).send({ error: 'Project not found' })
+      if (!(await projects.isMember(q.live, req.currentUser.id))) return reply.code(403).send({ error: 'Not a member of this project' })
+      grant = { k: 'l', i: q.live, u: req.currentUser.id }
+    } else {
+      return reply.code(400).send({ error: 'session, main or live is required' })
+    }
+    reply.header('Cache-Control', 'no-store')
+    return { url: `/preview/t/${mintPreviewToken(grant, services.config.cookieSecret)}/`, ttlMs: PREVIEW_TOKEN_TTL_MS }
+  })
+
+  const serveSigned = async (req: FastifyRequest, reply: FastifyReply) => {
+    const { token } = req.params as { token: string; '*'?: string }
+    const grant = readPreviewToken(token, services.config.cookieSecret)
+    const deny = (code: number, msg: string) =>
+      reply.code(code).header('Content-Security-Policy', PREVIEW_CSP).type('text/html').send(placeholderPage(msg))
+    if (!grant) return deny(403, 'This preview link has expired — reload the page.')
+    const projectId = grant.k === 's' ? (await sessions.getSession(grant.i))?.projectId : grant.i
+    if (!projectId) return deny(404, 'Not found.')
+    if (!(await projects.isMember(projectId, grant.u))) return deny(403, 'You are not a member of this project.')
+    const owner = await projects.getProject(projectId)
+    if (!owner) return deny(404, 'Not found.')
+    let root: string | undefined
+    if (grant.k === 'l') {
+      await services.liveMain.get(projectId)
+      root = services.liveMain.dirFor(projectId)
+    } else {
+      root = grant.k === 'm' ? owner.repoPath : (await sessions.getSession(grant.i))?.worktreePath
+      if (!root) return deny(404, 'Not found.')
+      await projects.gitFor(owner).ensureCheckout(root)
+    }
+    reply.header('Referrer-Policy', 'no-referrer')
+    serveFromRoot(root, (req.params as { '*'?: string })['*'] ?? '', reply)
+  }
+  app.get('/preview/t/:token', serveSigned)
+  app.get('/preview/t/:token/*', serveSigned)
 }

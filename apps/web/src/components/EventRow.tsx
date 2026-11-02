@@ -30,6 +30,8 @@ import { Link } from 'react-router-dom'
 import type { PresenceUser, SessionEventOf } from '@loom/shared'
 import { flipContainer, momentCommitSettle } from '../lib/choreography'
 import { groupForDisplay, parseUnifiedDiff, type DiffGroup } from '../lib/diff'
+import { ChecksReport, PlanList } from './Checks'
+import { TestCases } from './TestCases'
 import { TokenLine, useHighlightedLines } from './code'
 import { Popover, PopoverContent, PopoverTrigger } from './overlay'
 import { ReactionCounts, ReactionStrip } from './Reactions'
@@ -141,7 +143,7 @@ export const EventRow = memo(function EventRow({
               aria-label="Fork from this point"
               title="Fork from this point"
               className={clsx(
-                'absolute right-0 top-1.5 z-0 h-6 w-6 items-center justify-center rounded text-tertiary transition-colors duration-micro hover:bg-raised hover:text-lav-300',
+                'absolute right-0 top-1.5 z-0 h-6 w-6 items-center justify-center rounded text-tertiary transition-colors duration-micro hover:bg-raised hover:text-signal-300',
                 confirmOpen ? 'flex' : 'flex opacity-0 focus-visible:opacity-100 group-hover:opacity-100 group-focus-within:opacity-100 [@media(hover:none)]:opacity-100',
               )}
             >
@@ -386,7 +388,7 @@ function RowBody({
       const to = actions?.projectId ? `/p/${actions.projectId}/s/${p.childSessionId}` : null
       const body = (
         <span className="inline-flex items-center gap-2">
-          <GitFork size={14} strokeWidth={1.5} className="text-lav-300" />
+          <GitFork size={14} strokeWidth={1.5} className="text-signal-300" />
           <span className="text-small text-secondary">
             <span className="font-medium text-primary">{p.byUserName}</span> forked from here
           </span>
@@ -408,6 +410,26 @@ function RowBody({
     }
     case 'suggestion':
       return <SuggestionCard item={item} compact={compact} actions={actions} />
+    case 'checks':
+      return <ChecksReport run={item.event.payload} at={item.event.createdAt} compact={compact} />
+    case 'plan':
+      return <PlanList plan={item.event.payload} compact={compact} />
+    case 'tests':
+      return (
+        <TestCases
+          plan={item.event}
+          verdicts={item.verdicts}
+          latestCommitSeq={actions?.latestCommitSeq}
+          onVerdict={actions?.onVerdict}
+          onOpenBench={actions?.onOpenBench}
+        />
+      )
+    case 'steer':
+      return <SteerRow item={item} />
+    case 'approval':
+      return <ApprovalCard item={item} actions={actions} />
+    case 'coordination':
+      return <CoordinationRow event={item.event} projectId={actions?.projectId} />
   }
 }
 
@@ -430,7 +452,7 @@ function ThoughtRow({ event, compact }: { event: SessionEventOf<'thought'>; comp
         compact ? 'text-small' : 'text-ui',
       )}
     >
-      <Brain size={14} strokeWidth={1.5} className="mt-[3px] shrink-0 text-lav-300" aria-hidden />
+      <Brain size={14} strokeWidth={1.5} className="mt-[3px] shrink-0 text-signal-300" aria-hidden />
       <span className={clsx('min-w-0 italic', open ? 'whitespace-pre-wrap' : 'line-clamp-1')}>
         <span className="sr-only">Agent thought: </span>
         {open ? text : firstLine}
@@ -595,7 +617,7 @@ function ToolChip({ item, compact }: { item: Extract<DisplayItem, { kind: 'tool'
 }
 
 /* ----------------------------------------------------------------------------
- * Diff cards — the flagship. Shiki `loom-charcoal`, line numbers, collapsed
+ * Diff cards — the flagship. Shiki `loom-print`, line numbers, collapsed
  * context, 480px clamp with fade, Flip expand.
  * ------------------------------------------------------------------------- */
 export function DiffStats({ additions, deletions, flow = false }: { additions: number; deletions: number; flow?: boolean }) {
@@ -903,12 +925,12 @@ function CommitRow({ event, compact, animate }: { event: SessionEventOf<'commit'
       <span
         ref={nodeRef}
         aria-hidden
-        className="absolute -left-[19.5px] top-[1.35rem] h-[7px] w-[7px] rounded-full bg-lav-300"
+        className="absolute -left-[19.5px] top-[1.35rem] h-[7px] w-[7px] rounded-full bg-signal-300"
       />
       <span
         ref={rippleRef}
         aria-hidden
-        className="pointer-events-none absolute -left-[24.5px] top-[1.05rem] h-[17px] w-[17px] rounded-full border border-lav-border opacity-0"
+        className="pointer-events-none absolute -left-[24.5px] top-[1.05rem] h-[17px] w-[17px] rounded-full border border-signal-border opacity-0"
       />
       <div className="max-w-[70ch] rounded-lg border border-hairline bg-surface p-4">
         <div {...rise(0)}>
@@ -975,6 +997,132 @@ function SuggestionCard({
           </Button>
         </div>
       )}
+    </div>
+  )
+}
+
+/* ----------------------------------------------------------------------------
+ * Steer — the driver redirected the agent mid-run; shows whether it landed yet
+ * ------------------------------------------------------------------------- */
+function SteerRow({ item }: { item: Extract<DisplayItem, { kind: 'steer' }> }) {
+  const p = item.event.payload
+  return (
+    <div className="max-w-[70ch] border-l-2 border-signal-500 pl-3">
+      <div className="telemetry flex flex-wrap items-center gap-2 text-tertiary">
+        <span className="text-primary">{p.byName} steered</span>
+        {item.applied === undefined ? (
+          <span className="animate-pulse">waiting for the next step…</span>
+        ) : item.applied.afterTool ? (
+          <span>delivered after {item.applied.afterTool}</span>
+        ) : (
+          <span>became the next request</span>
+        )}
+      </div>
+      <div className="mt-0.5 whitespace-pre-wrap break-words text-body text-primary">{p.text}</div>
+    </div>
+  )
+}
+
+/* ----------------------------------------------------------------------------
+ * Guarded action — the agent waits for a second person before a destructive step
+ * ------------------------------------------------------------------------- */
+function ApprovalCard({ item, actions }: { item: Extract<DisplayItem, { kind: 'approval' }>; actions?: RowActions }) {
+  const p = item.event.payload
+  const d = item.decision?.payload
+  const [busy, setBusy] = useState(false)
+  const isDriver = actions?.selfId === p.driverUserId
+  const canDecide = !d && !isDriver && actions?.onApproval
+  const decide = async (decision: 'approved' | 'denied') => {
+    if (!actions?.onApproval) return
+    setBusy(true)
+    try {
+      await actions.onApproval(p.requestId, decision)
+    } finally {
+      setBusy(false)
+    }
+  }
+  return (
+    <div className={cn('max-w-[70ch] border-2 bg-surface', d ? 'border-hairline-strong' : 'border-warn')}>
+      <div className="flex items-center gap-2 border-b border-hairline px-3 py-1.5">
+        <span className={cn('telemetry px-1.5 font-bold', d ? 'bg-raised text-secondary' : 'bg-warn text-on-accent')}>
+          {d ? (d.decision === 'approved' ? 'Approved' : d.decision === 'denied' ? 'Denied' : 'Lapsed') : 'Needs approval'}
+        </span>
+        <span className="telemetry text-tertiary">{p.reason === 'destructive' ? 'Destructive action' : 'Protected file'}</span>
+      </div>
+      <div className="px-3 py-2">
+        <div className="text-body text-primary">
+          The agent wants to <span className="font-mono text-code">{p.summary}</span>.
+        </div>
+        {d ? (
+          <div className="mt-1 text-small text-secondary">
+            {d.decision === 'expired' ? 'Nobody decided in time, so it did not run.' : `${d.byName} ${d.decision} it${d.decision === 'denied' ? ' — it did not run' : ''}.`}
+          </div>
+        ) : canDecide ? (
+          <div className="mt-2 flex gap-2">
+            <Button variant="primary" size="sm" disabled={busy} onClick={() => void decide('approved')}>
+              Approve
+            </Button>
+            <Button variant="danger" size="sm" disabled={busy} onClick={() => void decide('denied')}>
+              Deny
+            </Button>
+          </div>
+        ) : (
+          <div className="mt-1 text-small text-secondary" role="status">
+            {isDriver ? 'Waiting for a teammate — you started this run, so someone else decides.' : 'Waiting for a decision…'}
+          </div>
+        )}
+      </div>
+    </div>
+  )
+}
+
+/* ----------------------------------------------------------------------------
+ * Coordination — what the radar told this agent about teammates' agents
+ * ------------------------------------------------------------------------- */
+function CoordinationRow({ event, projectId }: { event: SessionEventOf<'coordination'>; projectId?: string }) {
+  const p = event.payload
+  const what = p.items.map((i) => (i.symbols.length > 0 ? `${i.path} › ${i.symbols.slice(0, 3).join(', ')}` : i.path)).join('; ')
+  const who =
+    p.against === 'main' ? (
+      'what’s already on main'
+    ) : p.withSessionId && projectId ? (
+      <Link to={`/p/${projectId}/s/${p.withSessionId}`} className="underline decoration-1 underline-offset-2 hover:text-primary">
+        {p.withName}&rsquo;s session
+      </Link>
+    ) : p.against === 'external' ? (
+      `${p.withName}’s laptop agent`
+    ) : (
+      `${p.withName}’s work`
+    )
+  if (p.kind === 'briefing') {
+    return (
+      <div className="flex max-w-[70ch] items-baseline gap-2 text-small text-secondary">
+        <span className="telemetry shrink-0 border border-hairline-strong px-1 text-tertiary">Radar</span>
+        <span className="min-w-0">
+          Briefed on {who} — also changing <span className="font-mono text-code-sm text-primary">{what}</span>
+        </span>
+      </div>
+    )
+  }
+  const conflict = p.kind === 'conflict'
+  return (
+    <div className={cn('max-w-[70ch] border-l-2 pl-3', conflict ? 'border-signal-500' : 'border-ok')}>
+      <div className="telemetry flex items-center gap-2">
+        <span className={cn('px-1.5 font-bold text-on-accent', conflict ? 'bg-signal-500' : 'bg-ok')}>{conflict ? 'Conflict caught' : 'Resolved'}</span>
+        <span className="text-tertiary">{conflict ? 'before anything merged' : 'fits now'}</span>
+      </div>
+      <div className="mt-1 text-body text-primary">
+        {conflict ? (
+          <>
+            A test-merge found this work and {who} both change <span className="font-mono text-code">{what}</span>. Both agents were told to adapt now,
+            while it&rsquo;s small.
+          </>
+        ) : (
+          <>
+            This work and {who} now merge cleanly in <span className="font-mono text-code">{what}</span>.
+          </>
+        )}
+      </div>
     </div>
   )
 }

@@ -15,7 +15,7 @@ export interface TestContext {
  * (no-delay) mock agent; pass `{ fastMock: false }` when a test needs a turn
  * slow enough to interrupt mid-flight.
  */
-export async function makeTestServices(opts: { fastMock?: boolean } = {}): Promise<TestContext> {
+export async function makeTestServices(opts: { fastMock?: boolean; platform?: 'server' | 'serverless' } = {}): Promise<TestContext> {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'loom-test-'))
   const config = loadConfig({
     nodeEnv: 'test',
@@ -24,6 +24,7 @@ export async function makeTestServices(opts: { fastMock?: boolean } = {}): Promi
     sqlitePath: path.join(dir, 'test.db'),
     databaseUrl: null,
     anthropicApiKey: null,
+    ...(opts.platform ? { platform: opts.platform } : {}),
   })
   const services = await createServices(config, { fastMock: opts.fastMock ?? true })
   return {

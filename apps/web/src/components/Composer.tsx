@@ -11,6 +11,8 @@ export function Composer({
   agentStatus,
   fresh = false,
   onSend,
+  checkSimilar,
+  onOpenSession,
 }: {
   sessionId: string
   agentStatus: AgentActivityStatus
@@ -18,10 +20,15 @@ export function Composer({
   fresh?: boolean
   /** C5: optimistic send (falls back to the raw socket when absent) */
   onSend?: (text: string) => boolean
+  /** before a session's first task: is a teammate already doing this? */
+  checkSimilar?: (text: string) => Promise<Array<{ sessionId: string; title: string; driverName: string; ask: string }>>
+  onOpenSession?: (sessionId: string) => void
 }) {
   const [text, setText] = useState('')
   const [queue, setQueue] = useState<string[]>([])
   const [notice, setNotice] = useState<string | null>(null)
+  const [similar, setSimilar] = useState<{ text: string; matches: Array<{ sessionId: string; title: string; driverName: string; ask: string }> } | null>(null)
+  const [checking, setChecking] = useState(false)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
   const ringRef = useRef<HTMLSpanElement>(null)
   const busy = agentStatus === 'thinking' || agentStatus === 'running_tools'
@@ -55,9 +62,41 @@ export function Composer({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [busy, queue, sessionId])
 
-  const submit = () => {
+  // steer the running agent instead of waiting: it reads this at its next tool boundary
+  const steerNow = () => {
+    const trimmed = text.trim()
+    if (!trimmed || !busy) return
+    if (!wsClient.steer(sessionId, trimmed)) {
+      setNotice('Connection lost — reconnecting. Your steer is kept; try again in a second.')
+      return
+    }
+    setNotice(null)
+    setText('')
+    textareaRef.current?.focus()
+  }
+
+  // one prompt carrying a whole feature list tends to go worse than small, steerable steps
+  const bigAsk = !busy && isBigAsk(text)
+
+  const submit = async (force = false) => {
     const trimmed = text.trim()
     if (!trimmed) return
+    // starting a task: check nobody's already on it (the human decides)
+    if (!busy && fresh && !force && checkSimilar && similar?.text !== trimmed) {
+      setChecking(true)
+      try {
+        const matches = await checkSimilar(trimmed)
+        if (matches.length > 0) {
+          setSimilar({ text: trimmed, matches })
+          return
+        }
+      } catch {
+        /* the check is advisory — never block sending on it */
+      } finally {
+        setChecking(false)
+      }
+    }
+    setSimilar(null)
     if (busy) {
       setQueue((q) => [...q, trimmed])
       setText('')
@@ -100,15 +139,44 @@ export function Composer({
           </div>
         )}
 
+        {similar && (
+          <div role="alert" className="mb-2 border-2 border-warn bg-surface p-3">
+            <div className="telemetry text-warn">Someone may already be on this</div>
+            {similar.matches.map((m) => (
+              <div key={m.sessionId} className="mt-1.5 flex flex-wrap items-baseline gap-x-2 text-small">
+                <span className="font-semibold text-primary">{m.driverName}</span>
+                <span className="min-w-0 text-secondary">is working on &ldquo;{m.ask.slice(0, 120)}&rdquo;</span>
+                {onOpenSession && (
+                  <button type="button" onClick={() => onOpenSession(m.sessionId)} className="telemetry text-primary underline underline-offset-2">
+                    Open their session
+                  </button>
+                )}
+              </div>
+            ))}
+            <div className="mt-2 flex gap-2">
+              <button
+                type="button"
+                onClick={() => void submit(true)}
+                className="h-7 border border-hairline-strong px-2.5 text-[11px] font-semibold uppercase tracking-[0.04em] text-primary hover:bg-primary hover:text-canvas"
+              >
+                Start anyway
+              </button>
+              <button type="button" onClick={() => setSimilar(null)} className="h-7 px-2.5 text-[11px] font-semibold uppercase tracking-[0.04em] text-secondary hover:text-primary">
+                Edit my request
+              </button>
+            </div>
+          </div>
+        )}
+
         <div className="relative">
           {/* M1 breathing ring */}
           <span
             ref={ringRef}
             aria-hidden
             className="pointer-events-none absolute -inset-px rounded-lg opacity-0"
-            style={{ outline: '1px solid var(--lav-500)', outlineOffset: 2 }}
+            style={{ outline: '1px solid var(--signal-500)', outlineOffset: 2 }}
           />
-          <div className="flex items-end gap-2 rounded-lg border border-hairline bg-raised p-2 transition-colors duration-fast focus-within:border-lav-border">
+          <div className="flex items-end gap-2 rounded-lg border border-hairline bg-raised p-2 transition-colors duration-fast focus-within:border-signal-border">
             <textarea
               ref={textareaRef}
               name="message"
@@ -119,7 +187,8 @@ export function Composer({
                 // Enter confirms an IME composition (CJK input) — it must not send
                 if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) {
                   e.preventDefault()
-                  submit()
+                  if (busy && (e.metaKey || e.ctrlKey)) steerNow()
+                  else void submit()
                 }
               }}
               rows={Math.min(5, Math.max(1, text.split('\n').length))}
@@ -136,12 +205,25 @@ export function Composer({
                 <Square size={12} strokeWidth={2} fill="currentColor" aria-hidden />
               </button>
             )}
+            {busy && (
+              <button
+                onClick={steerNow}
+                disabled={!text.trim()}
+                title="Redirect the agent now — it reads this after the step it's on (⌘/Ctrl+Enter)"
+                className={cn(
+                  'flex h-7 shrink-0 items-center justify-center px-2.5 text-[11px] font-semibold uppercase tracking-[0.04em] transition-colors duration-micro',
+                  text.trim() ? 'border border-hairline-strong bg-surface text-primary hover:bg-primary hover:text-canvas' : 'border border-hairline text-disabled',
+                )}
+              >
+                Steer now
+              </button>
+            )}
             <button
-              onClick={submit}
-              disabled={!text.trim()}
+              onClick={() => void submit()}
+              disabled={!text.trim() || checking}
               className={cn(
                 'flex h-7 shrink-0 items-center justify-center gap-1 rounded px-2.5 text-ui font-medium transition-colors duration-micro',
-                text.trim() ? 'bg-lav-500 text-on-accent hover:bg-lav-400' : 'bg-inset text-disabled',
+                text.trim() ? 'bg-signal-500 text-on-accent hover:bg-signal-400' : 'bg-inset text-disabled',
               )}
             >
               {busy ? 'Queue' : 'Send'}
@@ -158,7 +240,11 @@ export function Composer({
           {notice ? (
             <span>{notice}</span>
           ) : busy ? (
-            <span>Agent is working…</span>
+            <span>Agent is working… Enter queues for later · ⌘/Ctrl+Enter steers it now</span>
+          ) : bigAsk ? (
+            <span className="text-secondary">
+              That’s a big ask — smaller steps are easier for the team to steer and test. Send it anyway, or split it up.
+            </span>
           ) : queue.length > 0 ? (
             <span className="tnum">
               {queue.length} message{queue.length === 1 ? '' : 's'} queued — each sends when the agent is free
@@ -172,4 +258,12 @@ export function Composer({
       </div>
     </div>
   )
+}
+
+/** a request bundling many things: long, or a list of four or more items */
+function isBigAsk(text: string): boolean {
+  const t = text.trim()
+  if (t.length > 700) return true
+  const items = t.split('\n').filter((l) => /^\s*(?:[-*•]|\d+[.)])\s+/.test(l)).length
+  return items >= 4
 }

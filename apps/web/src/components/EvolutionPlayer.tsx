@@ -26,7 +26,7 @@ export function EvolutionPlayer({ path, contents, onClose }: { path: string; con
       const compiled: KeyedTokensInfo[] = []
       let prev: KeyedTokensInfo | null = null
       for (const code of contents) {
-        let info = codeToKeyedTokens(hl as never, code, { lang: useLang as never, theme: 'loom-charcoal' })
+        let info = codeToKeyedTokens(hl as never, code, { lang: useLang as never, theme: 'loom-print' })
         if (prev) info = syncTokenKeys(prev, info).to
         compiled.push(info)
         prev = info

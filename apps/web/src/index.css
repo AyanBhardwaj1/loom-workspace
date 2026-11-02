@@ -30,20 +30,33 @@ h3 {
 }
 
 /*
- * The canvas: the living MeshGradient mounts behind the root (see
- * LoomCanvas.tsx). The body carries the flat charcoal + the CSS radial
- * fallback so first paint and no-WebGL environments read identically.
- * Surfaces sit on top as flat solids — depth lives behind content only.
+ * The substrate: unbleached paper with a faint blueprint grid of ruled
+ * lines (48px module). Rules, not gradients — the grid is two 1px lines.
  */
 body {
   @apply bg-canvas font-sans text-body text-primary antialiased;
-  background-image: radial-gradient(
-    ellipse 130% 90% at 50% -12%,
-    var(--bg-canvas-high) 0%,
-    var(--bg-canvas-mid) 46%,
-    var(--bg-canvas) 100%
-  );
-  background-attachment: fixed;
+  background-image: linear-gradient(var(--grid-line) 1px, transparent 1px),
+    linear-gradient(90deg, var(--grid-line) 1px, transparent 1px);
+  background-size: 48px 48px;
+  background-position: -1px -1px;
+  font-feature-settings: 'ss01', 'tnum';
+}
+
+/* the display voice: condensed, black, uppercase — used for macro headings */
+.font-display {
+  font-family: 'Archivo Variable', 'Arial Narrow', sans-serif;
+  font-stretch: 68%;
+  font-weight: 900;
+  text-transform: uppercase;
+  letter-spacing: -0.02em;
+}
+/* telemetry: monospace, uppercase, tracked — metadata, ids, nav */
+.telemetry {
+  font-family: 'JetBrains Mono Variable', ui-monospace, monospace;
+  font-size: 11px;
+  line-height: 14px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
 }
 
 /* ---- quiet 8px scrollbars ---- */
@@ -57,7 +70,7 @@ body {
 }
 *::-webkit-scrollbar-thumb {
   background: var(--scroll-thumb);
-  border-radius: 4px;
+  border-radius: 0;
 }
 *::-webkit-scrollbar-thumb:hover {
   background: var(--scroll-thumb-hover);
@@ -67,13 +80,14 @@ body {
 }
 
 ::selection {
-  background: rgba(156, 143, 242, 0.3);
+  background: var(--signal-500);
+  color: var(--text-on-accent);
 }
 
 /* ---- the one focus treatment: 1px lavender ring, 2px offset ----
    (outlines follow each element's own radius — never reshape it) */
 :focus-visible {
-  outline: 1px solid var(--lav-500);
+  outline: 2px solid var(--signal-500);
   outline-offset: 2px;
 }
 
@@ -95,7 +109,7 @@ body {
   color: var(--text-tertiary);
 }
 .loom-input:focus {
-  outline: 1px solid var(--lav-500);
+  outline: 1px solid var(--signal-500);
   outline-offset: 0;
   border-color: var(--hairline-hover);
 }
@@ -115,7 +129,7 @@ kbd {
   height: 16px;
   margin-left: 1px;
   vertical-align: text-bottom;
-  background: var(--lav-500);
+  background: var(--signal-500);
   animation: caret-blink 1s steps(2) infinite;
 }
 @keyframes caret-blink {
@@ -130,7 +144,7 @@ kbd {
  * the GPU. Runs ONLY while the agent streams (class toggled by ChatLog).
  */
 .thread-current {
-  stroke: var(--lav-500);
+  stroke: var(--signal-500);
   stroke-dasharray: 24 96;
   animation: thread-current 3s linear infinite;
   opacity: 0.25;
@@ -151,7 +165,7 @@ kbd {
 .skeleton::after {
   content: '';
   @apply absolute inset-0 animate-shimmer-x;
-  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.04), transparent);
+  background: linear-gradient(90deg, transparent, var(--hairline), transparent);
 }
 
 /* number-flow inherits tabular-nums from context; enforce app-wide on data */
@@ -165,19 +179,19 @@ kbd {
   height: 12px;
   width: 12px;
   border-radius: 999px;
-  background: var(--lav-500);
+  background: var(--signal-500);
   border: 0;
   cursor: pointer;
   transition: background-color var(--t-micro) var(--ease-standard);
 }
 .replay-range::-webkit-slider-thumb:hover {
-  background: var(--lav-400);
+  background: var(--signal-400);
 }
 .replay-range::-moz-range-thumb {
   height: 12px;
   width: 12px;
   border-radius: 999px;
-  background: var(--lav-500);
+  background: var(--signal-500);
   border: 0;
   cursor: pointer;
 }
@@ -281,6 +295,15 @@ kbd {
  * Reduced motion: stillness. Choreographed moments degrade separately via
  * gsap.matchMedia; this kills the CSS layer (currents, pulses, shimmers).
  */
+/* a teammate's click in the preview: one square pulse, then gone */
+.loom-click-ripple {
+  animation: loom-click 700ms var(--ease-standard) forwards;
+}
+@keyframes loom-click {
+  from { opacity: 0.9; transform: scale(0.4); }
+  to { opacity: 0; transform: scale(1.6); }
+}
+
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,

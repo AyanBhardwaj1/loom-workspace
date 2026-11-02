@@ -4,7 +4,7 @@ import { ulid } from 'ulid'
 import { AuthService } from './auth/service'
 import { createDb } from './db/client'
 import { loadConfig } from './env'
-import { GitService } from './git/gitService'
+import { initRepo } from './git/repo'
 import path from 'node:path'
 import fs from 'node:fs'
 
@@ -60,7 +60,7 @@ async function seed(): Promise<void> {
   const projectId = ulid()
   const repoPath = path.join(config.dataDir, 'projects', projectId, 'repo')
   fs.mkdirSync(path.dirname(repoPath), { recursive: true })
-  await GitService.initRepo(
+  await initRepo(
     repoPath,
     `# Nimbus
 
@@ -71,6 +71,7 @@ This repo is built collaboratively through ${BRAND}: every commit was made by an
 AI coding agent driven by a team member in a live, forkable session.
 `,
     { name: founders[0]!.name, email: founders[0]!.email },
+    { config, dbh },
   )
 
   const now = new Date().toISOString()

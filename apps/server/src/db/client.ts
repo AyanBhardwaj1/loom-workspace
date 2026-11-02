@@ -1,9 +1,7 @@
 import fs from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
-import Database from 'better-sqlite3'
-import { drizzle as drizzleSqlite, type BetterSQLite3Database } from 'drizzle-orm/better-sqlite3'
-import { migrate as migrateSqlite } from 'drizzle-orm/better-sqlite3/migrator'
+import type { BetterSQLite3Database } from 'drizzle-orm/better-sqlite3'
 import { drizzle as drizzlePg } from 'drizzle-orm/node-postgres'
 import { migrate as migratePg } from 'drizzle-orm/node-postgres/migrator'
 import pg from 'pg'
@@ -12,7 +10,8 @@ import * as pgSchema from './schema.pg'
 import * as sqliteSchema from './schema.sqlite'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
-const MIGRATIONS_DIR = path.resolve(__dirname, '../../drizzle')
+// a bundled serverless function ships its migrations next to itself
+const MIGRATIONS_DIR = process.env.LOOM_MIGRATIONS_DIR ?? path.resolve(__dirname, '../../drizzle')
 
 export type DbSchema = typeof sqliteSchema
 export type Db = BetterSQLite3Database<DbSchema>
@@ -36,7 +35,8 @@ export interface DbHandle {
  */
 export async function createDb(config: ServerConfig): Promise<DbHandle> {
   if (config.databaseUrl) {
-    const pool = new pg.Pool({ connectionString: config.databaseUrl })
+    // serverless: many small instances — keep each one's pool tiny
+    const pool = new pg.Pool({ connectionString: config.databaseUrl, max: config.platform === 'serverless' ? 3 : 10 })
     const db = drizzlePg(pool, { schema: pgSchema })
     await migratePg(db, { migrationsFolder: path.join(MIGRATIONS_DIR, 'pg') })
     return {
@@ -47,6 +47,10 @@ export async function createDb(config: ServerConfig): Promise<DbHandle> {
     }
   }
 
+  // loaded lazily: the native module is only needed (and only shipped) for SQLite runs
+  const { default: Database } = await import('better-sqlite3')
+  const { drizzle: drizzleSqlite } = await import('drizzle-orm/better-sqlite3')
+  const { migrate: migrateSqlite } = await import('drizzle-orm/better-sqlite3/migrator')
   fs.mkdirSync(path.dirname(config.sqlitePath), { recursive: true })
   const sqlite = new Database(config.sqlitePath)
   sqlite.pragma('journal_mode = WAL')

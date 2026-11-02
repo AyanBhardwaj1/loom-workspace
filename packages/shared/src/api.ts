@@ -79,6 +79,8 @@ export interface BranchInfo {
   moduleName: string | null
   moduleEmoji: string | null
   lastCommitSha: string | null
+  /** the verified-to-merge gate, evaluated for the person asking */
+  gate: import('./mergeGate').MergeGate | null
 }
 
 export interface FileTreeEntry {
@@ -163,4 +165,97 @@ export interface OpenRouterModelDto {
     efforts: ReasoningEffort[]
     defaultEffort: string | null
   } | null
+}
+
+// ── F-ledger: who spent what, and who did what ──────────────────────────────
+
+export interface SpendRow {
+  key: string
+  label: string
+  color?: string
+  costUsd: number
+  tokens: number
+  turns: number
+}
+
+export interface ContributionRow {
+  userId: string
+  name: string
+  avatarColor: string
+  /** requests the person sent to the agent as driver */
+  prompts: number
+  steers: number
+  /** suggestions proposed / of which the driver accepted */
+  suggestions: number
+  suggestionsAccepted: number
+  /** test verdicts given, and how many caught a failure */
+  verdicts: number
+  failsCaught: number
+  approvals: number
+  comments: number
+  forks: number
+  merges: number
+}
+
+export interface ProjectLedger {
+  totalUsd: number
+  totalTokens: number
+  byMember: SpendRow[]
+  byModule: SpendRow[]
+  bySession: SpendRow[]
+  contributions: ContributionRow[]
+}
+
+// ── coordination: the Board and live main ───────────────────────────────────
+
+export interface FileChangeInfo {
+  path: string
+  kind: 'create' | 'edit' | 'delete'
+  symbols: string[]
+}
+
+export interface MergeConflictInfo {
+  path: string
+  symbols: string[]
+}
+
+export interface BoardCard {
+  sessionId: string
+  title: string
+  moduleName: string | null
+  driver: { id: string; name: string; color: string }
+  branchName: string
+  lane: 'needs-you' | 'working' | 'to-review' | 'idle' | 'merged'
+  state: import('./sessionState').DerivedSessionState
+  main: { ahead: number; behind: number; status: 'up-to-date' | 'ready' | 'behind' | 'conflicts'; conflicts: MergeConflictInfo[] }
+  overlaps: Array<{ withName: string; withTitle: string; withSessionId: string | null; external: boolean; files: string[]; conflicts: MergeConflictInfo[] }>
+  openConflicts: Array<{ withName: string; items: MergeConflictInfo[] }>
+  files: FileChangeInfo[]
+  lastEventAt: string | null
+}
+
+export interface BoardResponse {
+  computedAt: string
+  cards: BoardCard[]
+  external: Array<{ key: string; userName: string; userColor: string; branchName: string; title: string; files: FileChangeInfo[]; since: string }>
+  conflictsCaught: number
+  openConflicts: number
+}
+
+export interface LiveMainInfo {
+  projectId: string
+  builtAt: string
+  mainSha: string
+  entries: Array<{
+    key: string
+    sessionId: string
+    title: string
+    userName: string
+    userColor: string
+    branchName: string
+    status: 'in-live-main' | 'doesnt-fit' | 'nothing-yet'
+    conflicts: MergeConflictInfo[]
+    collidesWith: string[]
+  }>
+  checks: { status: 'passed' | 'warned' | 'failed'; results: Array<{ id: string; label: string; status: 'pass' | 'warn' | 'fail'; detail?: string }> } | null
 }

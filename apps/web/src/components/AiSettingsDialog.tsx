@@ -80,7 +80,7 @@ export function AgentModeChip({ onClick }: { onClick?: () => void }) {
       }
       className={cn(
         'inline-flex h-6 max-w-[15rem] items-center gap-1.5 truncate rounded-full border px-2.5 text-small transition-colors duration-micro',
-        mock ? 'border-hairline text-secondary hover:border-hairline-hover' : 'border-lav-border text-lav-300 hover:border-lav-400',
+        mock ? 'border-hairline text-secondary hover:border-hairline-hover' : 'border-signal-border text-signal-300 hover:border-signal-400',
       )}
     >
       <StatusDot tone={mock ? 'idle' : 'accent'} />
@@ -181,12 +181,12 @@ function ModelCombobox({
                   key={m.id}
                   value={`${m.id} ${m.name}`}
                   onSelect={() => pick(m.id)}
-                  className="relative flex cursor-pointer select-none flex-col gap-0.5 rounded px-2.5 py-1.5 data-[selected=true]:bg-lav-fill"
+                  className="relative flex cursor-pointer select-none flex-col gap-0.5 rounded px-2.5 py-1.5 data-[selected=true]:bg-signal-fill"
                 >
-                  <span aria-hidden className="palette-rule absolute bottom-1 left-0 top-1 w-[2px] rounded-full bg-lav-500" />
+                  <span aria-hidden className="palette-rule absolute bottom-1 left-0 top-1 w-[2px] rounded-full bg-signal-500" />
                   <span className="flex items-center gap-2">
                     <span className="min-w-0 truncate font-mono text-code text-primary">{m.id}</span>
-                    {m.id === value && <Check size={14} strokeWidth={1.5} className="ml-auto shrink-0 text-lav-400" />}
+                    {m.id === value && <Check size={14} strokeWidth={1.5} className="ml-auto shrink-0 text-signal-400" />}
                   </span>
                   {meta && <span className="truncate text-small text-tertiary">{meta}</span>}
                 </Command.Item>
@@ -199,7 +199,7 @@ function ModelCombobox({
             <button
               type="button"
               onClick={() => pick(search.trim())}
-              className="flex w-full items-center gap-1 truncate border-t border-hairline px-2.5 py-2 text-left text-small text-secondary transition-colors duration-micro hover:bg-lav-fill hover:text-primary"
+              className="flex w-full items-center gap-1 truncate border-t border-hairline px-2.5 py-2 text-left text-small text-secondary transition-colors duration-micro hover:bg-signal-fill hover:text-primary"
             >
               Use “<span className="font-mono text-code">{search.trim()}</span>” as a custom model id
             </button>
@@ -303,7 +303,7 @@ function ClaudeModelList({
             onClick={() => onPick(m.id)}
             className={cn(
               'flex w-full items-center gap-3 rounded border px-3 py-2 text-left transition-colors duration-micro',
-              selected ? 'border-lav-border bg-lav-fill' : 'border-hairline hover:border-hairline-hover',
+              selected ? 'border-signal-border bg-signal-fill' : 'border-hairline hover:border-hairline-hover',
             )}
           >
             <span className="min-w-0 flex-1">
@@ -313,7 +313,7 @@ function ClaudeModelList({
             <span className="tnum shrink-0 font-mono text-small text-tertiary">
               ${m.promptPrice} / ${m.completionPrice}
             </span>
-            {selected && <Check size={14} strokeWidth={1.5} className="shrink-0 text-lav-400" />}
+            {selected && <Check size={14} strokeWidth={1.5} className="shrink-0 text-signal-400" />}
           </button>
         )
       })}

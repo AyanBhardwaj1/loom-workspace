@@ -1,5 +1,5 @@
 import { and, eq } from 'drizzle-orm'
-import type { MergeResult } from '@loom/shared'
+import { isFreshVerdict, latestCommitSeq, type MergeResult } from '@loom/shared'
 import type { AgentRuntime } from '../agent/runtime'
 import type { DbHandle } from '../db/client'
 import type { ProjectService } from '../projects/service'
@@ -21,10 +21,17 @@ export class MergeService {
       projects: ProjectService
       sessions: SessionService
       runtime: AgentRuntime
+      /** main moved: caches built on it (radar, live main) start over */
+      onMainMoved?: (projectId: string) => void
     },
   ) {}
 
-  async mergeBranch(projectId: string, branchName: string, requestedBy: UserRow): Promise<MergeResult> {
+  async mergeBranch(
+    projectId: string,
+    branchName: string,
+    requestedBy: UserRow,
+    opts: { override?: { by: string; reason: string }; unverified?: string[] } = {},
+  ): Promise<MergeResult> {
     const { dbh, projects, sessions } = this.deps
     const conflictResolver = this.deps.runtime.conflictResolver
     const { db, t } = dbh
@@ -48,7 +55,10 @@ export class MergeService {
 
     const beforeSha = await git.currentSha('main')
     const author = { name: requestedBy.name, email: requestedBy.email }
-    const res = await git.mergeIntoMain(branchName, `Merge ${branchName} into main`, author)
+    // provenance travels with the code: who drove, steered, suggested and verified
+    const ledger = owningSession ? await this.provenance(owningSession.id, driver?.name ?? null, requestedBy.name, opts.override, opts.unverified) : null
+    const trailers = ledger ? `\n\n${ledger.trailers.join('\n')}` : ''
+    const res = await git.mergeIntoMain(branchName, `Merge ${branchName} into main${trailers}`, author)
 
     let sha: string
     let hadConflicts = false
@@ -83,7 +93,7 @@ export class MergeService {
         await git.resolveConflictsTheirs(unresolved)
       }
       try {
-        sha = await git.commitMerge(`Merge ${branchName} into main (conflicts resolved)`, author)
+        sha = await git.commitMerge(`Merge ${branchName} into main (conflicts resolved)${trailers}`, author)
       } catch (err) {
         await git.abortMerge()
         return {
@@ -105,8 +115,8 @@ export class MergeService {
     const deletions = stats.reduce((n, s) => n + s.deletions, 0)
     const technicalSummary = `Merge ${branchName} into main (${stats.length} file${stats.length === 1 ? '' : 's'}, +${additions}/−${deletions})`
     const who = driver?.name ?? 'a teammate'
-    const what = module ? `${module.emoji} ${module.name}` : 'their session'
-    const plainExplanation = `${who}'s work on ${what} is now part of the main version of the project — everyone will build on top of it from here.${conflictNote}`
+    const what = module ? module.name : 'their session'
+    const plainExplanation = `${who}'s work on ${what} is now part of the main version of the project — everyone will build on top of it from here.${conflictNote}${ledger?.sentence ?? ''}`
 
     let changeId: string | null = null
     if (owningSession) {
@@ -124,6 +134,7 @@ export class MergeService {
       const [summary] = await projects.toChangeSummaries([change])
       if (summary) sessions.publishProjectUpdate(projectId, { kind: 'change', change: summary })
     }
+    this.deps.onMainMoved?.(projectId)
     sessions.publishProjectUpdate(projectId, {
       kind: 'merge',
       branchName,
@@ -138,5 +149,50 @@ export class MergeService {
       message: hadConflicts ? `Merged with conflicts resolved.${conflictNote}` : 'Merged cleanly into main.',
       changeId,
     }
+  }
+
+  /** the merge's ledger: commit trailers + one plain sentence for the history */
+  private async provenance(
+    sessionId: string,
+    driverName: string | null,
+    mergerName: string,
+    override?: { by: string; reason: string },
+    unverified?: string[],
+  ): Promise<{ trailers: string[]; sentence: string }> {
+    const events = await this.deps.sessions.getEvents(sessionId, 0)
+    const drivers = new Set<string>(driverName ? [driverName] : [])
+    const steerers = new Set<string>()
+    const suggesters = new Set<string>()
+    const models = new Set<string>()
+    for (const e of events) {
+      if (e.type === 'status' && e.payload.newDriverName) drivers.add(e.payload.newDriverName)
+      if (e.type === 'steer') steerers.add(e.payload.byName)
+      if (e.type === 'user_message' && e.payload.suggestedByName) suggesters.add(e.payload.suggestedByName)
+      if (e.type === 'usage' && e.payload.model) models.add(e.payload.model)
+    }
+    const commitSeq = latestCommitSeq(events)
+    const verifiers = new Set<string>()
+    for (const e of events) {
+      if (e.type === 'test_verdict' && e.payload.verdict === 'pass' && isFreshVerdict(e, commitSeq) && !drivers.has(e.payload.byName)) verifiers.add(e.payload.byName)
+    }
+    const line = (k: string, names: Set<string>) => (names.size > 0 ? [`${k}: ${[...names].join(', ')}`] : [])
+    const trailers = [
+      ...line('Driven-by', drivers),
+      ...line('Steered-by', steerers),
+      ...line('Suggested-by', suggesters),
+      ...line('Verified-by', verifiers),
+      `Merged-by: ${mergerName}`,
+      `AI-Assisted: yes (${models.size > 0 ? [...models].join(', ') : 'Loom agent'})`,
+      ...(override ? [`Merge-Override: ${override.by} — ${override.reason.replace(/\n/g, ' ')}`] : []),
+      ...(unverified ? [`Verification: incomplete — ${unverified.join('; ')}`] : []),
+    ]
+    const sentence = override
+      ? ` ${override.by} merged it without full verification: “${override.reason}”.`
+      : unverified
+        ? ` Merged before verification was complete (${unverified.join('; ')}).`
+        : verifiers.size > 0
+          ? ` Verified by ${[...verifiers].join(', ')} before merging.`
+          : ''
+    return { trailers, sentence }
   }
 }

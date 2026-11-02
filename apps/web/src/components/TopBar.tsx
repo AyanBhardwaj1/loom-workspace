@@ -1,5 +1,5 @@
 import { useQuery } from '@tanstack/react-query'
-import { ChevronDown, LogOut, Search, Settings } from 'lucide-react'
+import { ChevronDown, LogOut, Plug, Search, Settings } from 'lucide-react'
 import { useEffect, useState, type ReactNode } from 'react'
 import { Link, NavLink } from 'react-router-dom'
 import type { ProjectSummary, PresenceUser } from '@loom/shared'
@@ -7,6 +7,7 @@ import { api } from '../lib/api'
 import { useAuth } from '../state/auth'
 import { AiSettingsDialog } from './AiSettingsDialog'
 import { NotificationBell } from './NotificationBell'
+import { ConnectAgentsDialog } from './ConnectAgents'
 import { Avatar, IconButton, cn } from './primitives'
 import { Popover, PopoverContent, PopoverTrigger } from './overlay'
 import { Wordmark } from './Wordmark'
@@ -38,6 +39,7 @@ export function TopBar({
   const [aiOpen, setAiOpen] = useState(false)
   const [switcherOpen, setSwitcherOpen] = useState(false)
   const [accountOpen, setAccountOpen] = useState(false)
+  const [connectOpen, setConnectOpen] = useState(false)
 
   // the palette (and anything else) can open provider settings from anywhere
   useEffect(() => {
@@ -53,8 +55,8 @@ export function TopBar({
   })
 
   return (
-    <header className="z-sticky flex h-12 shrink-0 items-center gap-2 border-b border-hairline px-3 sm:gap-3 sm:px-4">
-      <Link to="/" className="flex shrink-0 items-center text-primary transition-colors duration-micro hover:text-lav-300" aria-label="All projects">
+    <header className="z-sticky flex h-12 shrink-0 items-center gap-2 border-b-2 border-hairline-strong bg-canvas px-3 sm:gap-3 sm:px-4">
+      <Link to="/" className="flex shrink-0 items-center text-primary transition-colors duration-micro hover:text-signal-300" aria-label="All projects">
         <Wordmark height={18} />
       </Link>
 
@@ -65,7 +67,9 @@ export function TopBar({
           </span>
           <Popover open={switcherOpen} onOpenChange={setSwitcherOpen}>
             <PopoverTrigger asChild>
-              <button className="flex min-w-0 items-center gap-1 rounded px-1.5 py-1 text-ui font-medium text-primary transition-colors duration-micro hover:bg-raised">
+              <button
+                aria-label={`Switch project (current: ${projectName})`}
+                className="flex min-w-0 items-center gap-1 rounded px-1.5 py-1 text-ui font-medium text-primary transition-colors duration-micro hover:bg-raised">
                 <span className="max-w-[9rem] truncate sm:max-w-[14rem]">{projectName}</span>
                 <ChevronDown size={14} strokeWidth={1.5} className="shrink-0 text-tertiary" aria-hidden />
               </button>
@@ -75,6 +79,9 @@ export function TopBar({
               <div className="mb-1 border-b border-hairline pb-1 sm:hidden">
                 {[
                   { to: `/p/${projectId}`, label: 'Dashboard' },
+                  { to: `/p/${projectId}/board`, label: 'Board' },
+                  { to: `/p/${projectId}/room`, label: 'Room' },
+                  { to: `/p/${projectId}/ledger`, label: 'Ledger' },
                   { to: `/p/${projectId}/history`, label: 'History' },
                 ].map((l) => (
                   <Link
@@ -100,7 +107,12 @@ export function TopBar({
                   )}
                 >
                   <span className="min-w-0 flex-1 truncate">{p.name}</span>
-                  {p.activeSessionCount > 0 && <span className="h-1.5 w-1.5 rounded-full bg-lav-500" aria-hidden />}
+                  {p.activeSessionCount > 0 && (
+                    <>
+                      <span className="h-1.5 w-1.5 bg-signal-500" aria-hidden />
+                      <span className="sr-only">live</span>
+                    </>
+                  )}
                 </Link>
               ))}
             </PopoverContent>
@@ -110,6 +122,9 @@ export function TopBar({
             <BarLink to={`/p/${projectId}`} end>
               Dashboard
             </BarLink>
+            <BarLink to={`/p/${projectId}/board`}>Board</BarLink>
+            <BarLink to={`/p/${projectId}/room`}>Room</BarLink>
+            <BarLink to={`/p/${projectId}/ledger`}>Ledger</BarLink>
             <BarLink to={`/p/${projectId}/history`}>History</BarLink>
           </nav>
         </>
@@ -150,7 +165,7 @@ export function TopBar({
             <PopoverTrigger asChild>
               <button
                 aria-label={`Account: ${user.name}`}
-                className="rounded-full transition-opacity duration-micro hover:opacity-80"
+                className="outline-offset-2 transition-shadow duration-micro hover:shadow-[0_0_0_2px_var(--text-primary)]"
               >
                 <Avatar name={user.name} color={user.avatarColor} size="md" />
               </button>
@@ -177,6 +192,16 @@ export function TopBar({
                 AI provider &amp; effort
               </button>
               <button
+                onClick={() => {
+                  setAccountOpen(false)
+                  setConnectOpen(true)
+                }}
+                className="flex h-9 w-full items-center gap-2.5 rounded px-2 text-left text-ui text-secondary transition-colors duration-micro hover:bg-raised hover:text-primary"
+              >
+                <Plug size={14} strokeWidth={1.5} aria-hidden />
+                Connect your coding agent
+              </button>
+              <button
                 onClick={() => void logout()}
                 className="flex h-9 w-full items-center gap-2.5 rounded px-2 text-left text-ui text-secondary transition-colors duration-micro hover:bg-raised hover:text-primary"
               >
@@ -189,6 +214,7 @@ export function TopBar({
       </div>
 
       <AiSettingsDialog open={aiOpen} onClose={() => setAiOpen(false)} />
+      <ConnectAgentsDialog open={connectOpen} onClose={() => setConnectOpen(false)} />
     </header>
   )
 }
@@ -200,8 +226,8 @@ function BarLink({ to, end, children }: { to: string; end?: boolean; children: R
       end={end}
       className={({ isActive }) =>
         cn(
-          'rounded px-2.5 py-1 text-ui transition-colors duration-micro',
-          isActive ? 'bg-lav-fill text-lav-300' : 'text-secondary hover:bg-raised hover:text-primary',
+          'telemetry flex h-7 items-center px-2.5 transition-colors duration-micro',
+          isActive ? 'bg-primary text-canvas' : 'text-secondary hover:bg-raised hover:text-primary',
         )
       }
     >

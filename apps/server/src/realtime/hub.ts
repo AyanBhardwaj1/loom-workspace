@@ -6,11 +6,18 @@ import type { ProjectService } from '../projects/service'
 import type { SessionService } from '../sessions/service'
 import type { NotificationService } from '../notifications/service'
 import { projectTopic, sessionTopic, userTopic, type EventBus } from './bus'
+import { withLock, type Coordination } from './coordination'
 
 type UserRow = typeof import('../db/schema.sqlite').users.$inferSelect
 
+/** where a connection's messages go: a WebSocket, or an HTTP response being assembled */
+interface Sink {
+  send(data: string): void
+  readonly open: boolean
+}
+
 interface ConnState {
-  socket: WebSocket
+  sink: Sink
   user: UserRow
   /** sessionId → bus unsubscribe */
   sessionSubs: Map<string, () => void>
@@ -28,6 +35,9 @@ interface ConnState {
   userUnsub: (() => void) | null
   /** 1.2: reaction rate limit — timestamps of this conn's recent reactions */
   reactionTimes: number[]
+  presenceTimes: number[]
+  /** sessionId → is this connection's user a member (presence is high-rate) */
+  memberOf: Map<string, boolean>
   /** serializes message handling — a quick sub/unsub must not race itself */
   chain: Promise<void>
 }
@@ -46,8 +56,6 @@ export class Hub {
    * (suggestion resolution) across a driver's multiple connections */
   private sessionLocks = new Map<string, Promise<unknown>>()
 
-  /** F9 — one pending wheel-offer per session: sessionId → {from, toUserId, at} */
-  private pendingHandoffs = new Map<string, { fromUserId: string; toUserId: string; at: number }>()
 
   constructor(
     private deps: {
@@ -57,12 +65,18 @@ export class Hub {
       projects: ProjectService
       orchestrator: AgentOrchestrator
       notifications: NotificationService
+      coord: Coordination
     },
   ) {}
 
   handleConnection(socket: WebSocket, user: UserRow): void {
     const conn: ConnState = {
-      socket,
+      sink: {
+        send: (d) => socket.send(d),
+        get open() {
+          return socket.readyState === socket.OPEN
+        },
+      },
       user,
       sessionSubs: new Map(),
       sessionProjects: new Map(),
@@ -72,6 +86,8 @@ export class Hub {
       readingEventId: null,
       userUnsub: null,
       reactionTimes: [],
+      presenceTimes: [],
+      memberOf: new Map(),
       chain: Promise.resolve(),
     }
     this.conns.add(conn)
@@ -98,19 +114,78 @@ export class Hub {
   }
 
   private send(conn: ConnState, msg: ServerMessage): void {
-    if (conn.socket.readyState === conn.socket.OPEN) {
-      conn.socket.send(JSON.stringify(msg))
+    if (conn.sink.open) conn.sink.send(JSON.stringify(msg))
+  }
+
+  /** per browser tab (clientId): rate-limit and membership memory across HTTP requests */
+  private httpClients = new Map<string, { reactionTimes: number[]; presenceTimes: number[]; memberOf: Map<string, boolean>; at: number }>()
+
+  /**
+   * Serverless transport: one HTTP request carries a batch of client
+   * messages; replies (errors, catchup batches) come back in the response.
+   * Subscriptions and presence don't travel here — they're declared on every
+   * poll (routes/realtime.ts). Broadcasts go out through the bus as usual.
+   */
+  async handleHttp(user: UserRow, clientId: string, raws: string[]): Promise<ServerMessage[]> {
+    const replies: ServerMessage[] = []
+    const now = Date.now()
+    let mem = this.httpClients.get(clientId)
+    if (!mem) {
+      if (this.httpClients.size > 5000) {
+        for (const [k, v] of this.httpClients) if (now - v.at > 10 * 60_000) this.httpClients.delete(k)
+      }
+      mem = { reactionTimes: [], presenceTimes: [], memberOf: new Map(), at: now }
+      this.httpClients.set(clientId, mem)
     }
+    mem.at = now
+    const conn: ConnState = {
+      sink: { send: (d) => replies.push(JSON.parse(d) as ServerMessage), open: true },
+      user,
+      sessionSubs: new Map(),
+      sessionProjects: new Map(),
+      projectSubs: new Map(),
+      viewing: null,
+      viewingProject: null,
+      readingEventId: null,
+      userUnsub: null,
+      reactionTimes: mem.reactionTimes,
+      presenceTimes: mem.presenceTimes,
+      memberOf: mem.memberOf,
+      chain: Promise.resolve(),
+    }
+    const HTTP_IGNORED = new Set(['sub', 'unsub', 'sub_project', 'unsub_project', 'viewing', 'reading'])
+    for (const raw of raws.slice(0, 50)) {
+      const msg = parseClientMessage(raw)
+      if (!msg) {
+        this.sendError(conn, 'bad_message', 'Malformed or unrecognized message')
+        continue
+      }
+      if (HTTP_IGNORED.has(msg.t)) continue
+      try {
+        await this.dispatch(conn, msg)
+      } catch (err) {
+        console.error('[rt] dispatch error:', err)
+        this.sendError(conn, 'internal', 'Something went wrong handling that message')
+      }
+      // the shared arrays are reassigned by the rate limiters — keep the memory current
+      mem.reactionTimes = conn.reactionTimes
+      mem.presenceTimes = conn.presenceTimes
+    }
+    return replies
   }
 
   private sendError(conn: ConnState, code: string, message: string): void {
     this.send(conn, { t: 'error', code, message })
   }
 
-  /** Run fn with exclusive access per sessionId (tail-chained promise). */
+  /**
+   * Run fn with exclusive access per sessionId: tail-chained in this process,
+   * and a coordination lock across instances (serverless).
+   */
   private async withSessionLock<T>(sessionId: string, fn: () => Promise<T>): Promise<T> {
     const prev = this.sessionLocks.get(sessionId) ?? Promise.resolve()
-    const run = prev.then(fn, fn)
+    const locked = () => withLock(this.deps.coord, `lock:session:${sessionId}`, fn)
+    const run = prev.then(locked, locked)
     // keep the chain alive but swallow rejections so one failure doesn't wedge it
     this.sessionLocks.set(
       sessionId,
@@ -210,6 +285,30 @@ export class Hub {
         } satisfies ServerMessage)
         return
       }
+      case 'preview_presence': {
+        // live co-testing: ≤25 frames/sec per connection, members only,
+        // identity from the authenticated connection (the page can't spoof it)
+        const now = Date.now()
+        conn.presenceTimes = conn.presenceTimes.filter((t) => now - t < 1000)
+        if (conn.presenceTimes.length >= 25) return
+        conn.presenceTimes.push(now)
+        let member = conn.memberOf.get(msg.sessionId)
+        if (member === undefined) {
+          const session = await sessions.getSession(msg.sessionId)
+          member = Boolean(session && (await projects.isMember(session.projectId, conn.user.id)))
+          conn.memberOf.set(msg.sessionId, member)
+        }
+        if (!member) return
+        const { t: _t, ...frame } = msg
+        this.deps.bus.publish(sessionTopic(msg.sessionId), {
+          t: 'preview_presence',
+          ...frame,
+          userId: conn.user.id,
+          name: conn.user.name,
+          color: conn.user.avatarColor,
+        } satisfies ServerMessage)
+        return
+      }
       case 'annotate': {
         // F8 — any project member pins a reaction/comment to an event
         const session = await sessions.getSession(msg.sessionId)
@@ -251,7 +350,7 @@ export class Hub {
         if (!(await projects.isMember(session.projectId, msg.toUserId))) {
           return this.sendError(conn, 'forbidden', 'They are not a member of this project')
         }
-        this.pendingHandoffs.set(msg.sessionId, { fromUserId: conn.user.id, toUserId: msg.toUserId, at: Date.now() })
+        await this.deps.coord.set(`handoff:${msg.sessionId}`, JSON.stringify({ fromUserId: conn.user.id, toUserId: msg.toUserId }), 120_000)
         this.deps.bus.publish(userTopic(msg.toUserId), {
           t: 'handoff_request',
           sessionId: session.id,
@@ -270,14 +369,15 @@ export class Hub {
       case 'handoff_response': {
         // F9 — atomic swap, serialized per session; stale/duplicate accepts lose
         await this.withSessionLock(msg.sessionId, async () => {
-          const pending = this.pendingHandoffs.get(msg.sessionId)
-          if (!pending || pending.toUserId !== conn.user.id || Date.now() - pending.at > 120_000) {
+          const raw = await this.deps.coord.get(`handoff:${msg.sessionId}`)
+          const pending = raw ? (JSON.parse(raw) as { fromUserId: string; toUserId: string }) : null
+          if (!pending || pending.toUserId !== conn.user.id) {
             if (msg.accept) this.sendError(conn, 'rejected', 'That offer is no longer open')
             return
           }
-          this.pendingHandoffs.delete(msg.sessionId)
+          await this.deps.coord.del(`handoff:${msg.sessionId}`)
           if (!msg.accept) return
-          if (this.deps.orchestrator.isBusy(msg.sessionId)) {
+          if (await this.deps.orchestrator.isBusy(msg.sessionId)) {
             return this.sendError(conn, 'rejected', 'The agent is mid-turn — try again when it settles')
           }
           const ok = await sessions.transferDriver(msg.sessionId, pending.fromUserId, conn.user)
@@ -306,6 +406,11 @@ export class Hub {
       case 'user_message': {
         const res = await orchestrator.handleUserMessage(msg.sessionId, conn.user, msg.text)
         if (!res.ok) this.sendError(conn, 'rejected', res.error ?? 'Message rejected')
+        return
+      }
+      case 'steer': {
+        const res = await orchestrator.steer(msg.sessionId, conn.user, msg.text)
+        if (!res.ok) this.sendError(conn, 'rejected', res.error ?? 'Could not steer the agent')
         return
       }
       case 'stop': {

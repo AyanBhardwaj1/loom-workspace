@@ -99,7 +99,7 @@ export function momentAgentAwakens(container: HTMLElement, travelPx: number): vo
     width: '6px',
     height: '6px',
     borderRadius: '999px',
-    background: 'var(--lav-500)',
+    background: 'var(--signal-500)',
     opacity: '0',
     pointerEvents: 'none',
   })
@@ -229,7 +229,7 @@ function momentMergeJoinInner(branchPath: SVGPathElement, joinedD: string, bloom
       bloom.setAttribute('cx', String(bloomAt.x))
       bloom.setAttribute('cy', String(bloomAt.y))
       bloom.setAttribute('r', '4')
-      bloom.setAttribute('fill', 'var(--lav-500)')
+      bloom.setAttribute('fill', 'var(--signal-500)')
       bloom.setAttribute('opacity', '0')
       svg.appendChild(bloom)
       const b = bloom

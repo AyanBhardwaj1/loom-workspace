@@ -30,13 +30,23 @@ export interface ServerConfig {
   anthropicSummaryModel: string
   /** built frontend, served statically in production if present */
   webDistPath: string
+  /**
+   * 'server' — one long-lived process with a persistent disk (git binary,
+   * WebSockets, in-memory coordination). 'serverless' — many short-lived
+   * instances, no disk (Vercel): repos in the DB, realtime over HTTP polling,
+   * coordination in the DB.
+   */
+  platform: 'server' | 'serverless'
 }
 
 export function loadConfig(overrides: Partial<ServerConfig> = {}): ServerConfig {
   const nodeEnv = process.env.NODE_ENV ?? 'development'
+  const platform = process.env.LOOM_PLATFORM === 'serverless' ? 'serverless' : 'server'
   const dataDir = process.env.LOOM_DATA_DIR
     ? path.resolve(process.env.LOOM_DATA_DIR)
-    : path.join(REPO_ROOT, 'data')
+    : platform === 'serverless'
+      ? '/tmp/loom'
+      : path.join(REPO_ROOT, 'data')
   return {
     nodeEnv,
     isDev: nodeEnv !== 'production',
@@ -51,6 +61,7 @@ export function loadConfig(overrides: Partial<ServerConfig> = {}): ServerConfig 
     anthropicModel: process.env.ANTHROPIC_MODEL || DEFAULT_CLAUDE_MODEL,
     anthropicSummaryModel: process.env.ANTHROPIC_SUMMARY_MODEL || DEFAULT_CLAUDE_SUMMARY_MODEL,
     webDistPath: path.join(REPO_ROOT, 'apps/web/dist'),
+    platform,
     ...overrides,
   }
 }

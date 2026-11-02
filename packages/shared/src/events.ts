@@ -39,6 +39,95 @@ export const assistantMessagePayload = z.object({ text: z.string() })
 export const thinkingDeltaPayload = z.object({ text: z.string() })
 /** One completed stretch of visible reasoning, persisted so replays show it. */
 export const thoughtPayload = z.object({ text: z.string().max(12_000) })
+/** A smoke-test run everyone in the session watches: after commits, on demand, or by the agent. */
+export const checkTriggerSchema = z.enum(['commit', 'manual', 'agent'])
+export const checkResultSchema = z.object({
+  id: z.string(),
+  label: z.string(),
+  status: z.enum(['pass', 'warn', 'fail']),
+  detail: z.string().max(2000).optional(),
+})
+export const checkRunPayload = z.object({
+  runId: z.string(),
+  trigger: checkTriggerSchema,
+  byName: z.string(),
+  status: z.enum(['passed', 'warned', 'failed']),
+  results: z.array(checkResultSchema).max(20),
+  durationMs: z.number().int().nonnegative(),
+})
+/** The agent's announced plan (intent broadcast) — replaced wholesale on each update. */
+export const planStepSchema = z.object({ text: z.string().min(1).max(200), status: z.enum(['todo', 'doing', 'done']) })
+export const planPayload = z.object({ steps: z.array(planStepSchema).min(1).max(12) })
+/**
+ * Mid-run steering: the driver redirects the agent WHILE it works. Delivered
+ * at the next tool-call boundary (never mid-edit); `steer_applied` records
+ * when the agent actually received it. Humans steer, the agent never does.
+ */
+export const steerPayload = z.object({
+  steerId: z.string(),
+  text: z.string().min(1).max(2000),
+  byUserId: z.string(),
+  byName: z.string(),
+})
+export const steerAppliedPayload = z.object({
+  steerId: z.string(),
+  /** the tool whose boundary carried it in; null when it became the next turn */
+  afterTool: z.string().nullable(),
+})
+/** Per-feature acceptance tests the agent proposes; teammates run them in the live preview. */
+export const testCaseSchema = z.object({
+  id: z.string(),
+  action: z.string().min(1).max(200),
+  expect: z.string().min(1).max(200),
+})
+export const testPlanPayload = z.object({ planId: z.string(), cases: z.array(testCaseSchema).min(1).max(8) })
+/** A teammate's verdict on one test case — advisory evidence the agent reads next turn. */
+export const testVerdictPayload = z.object({
+  planId: z.string(),
+  caseId: z.string(),
+  verdict: z.enum(['pass', 'fail']),
+  note: z.string().max(300).optional(),
+  byUserId: z.string(),
+  byName: z.string(),
+})
+/**
+ * Guarded actions: a destructive tool call (delete, shell, protected path)
+ * waits for a second member's decision — the driver can't approve their own.
+ */
+export const approvalRequestPayload = z.object({
+  requestId: z.string(),
+  toolName: z.string(),
+  /** what the agent wants to do, in plain words ("delete index.html") */
+  summary: z.string().max(300),
+  reason: z.enum(['destructive', 'protected_path']),
+  driverUserId: z.string(),
+  /** ISO time the request lapses (denied) if nobody decides */
+  expiresAt: z.string(),
+})
+export const approvalDecisionPayload = z.object({
+  requestId: z.string(),
+  decision: z.enum(['approved', 'denied', 'expired']),
+  byUserId: z.string().nullable(),
+  byName: z.string(),
+})
+/**
+ * Agent coordination: what the radar told an agent about other agents' work.
+ * `briefing` — at turn start, who else is changing the same files; `conflict` —
+ * a test-merge found both changed the same symbol (the agent was told to adapt
+ * now, while it's small); `resolved` — a reported conflict now merges cleanly.
+ */
+export const coordinationPayload = z.object({
+  kind: z.enum(['briefing', 'conflict', 'resolved']),
+  /** stable signature of the conflict (pair + files + symbols) — pairs `conflict` with `resolved` */
+  key: z.string(),
+  against: z.enum(['session', 'main', 'external']),
+  withSessionId: z.string().nullable(),
+  withName: z.string(),
+  withBranch: z.string().nullable(),
+  items: z.array(z.object({ path: z.string(), symbols: z.array(z.string()).max(12) })).max(20),
+})
+/** Transient: a check run began (so every viewer shows it running). */
+export const checkStartedPayload = z.object({ runId: z.string(), trigger: checkTriggerSchema, byName: z.string() })
 export const toolCallPayload = z.object({
   toolName: z.string(),
   input: z.record(z.unknown()),
@@ -67,6 +156,8 @@ export const statusPayload = z.object({
   note: z.string().optional(),
   /** F9 — set when this status records a driver handoff */
   newDriverUserId: z.string().optional(),
+  /** who held the wheel before the handoff (attribution of earlier work) */
+  previousDriverUserId: z.string().optional(),
   newDriverName: z.string().optional(),
   newDriverColor: z.string().optional(),
 })
@@ -131,6 +222,16 @@ export const sessionEventSchema = z.discriminatedUnion('type', [
   z.object({ ...base, type: z.literal('assistant_message'), payload: assistantMessagePayload }),
   z.object({ ...base, type: z.literal('thinking_delta'), payload: thinkingDeltaPayload }),
   z.object({ ...base, type: z.literal('thought'), payload: thoughtPayload }),
+  z.object({ ...base, type: z.literal('check_started'), payload: checkStartedPayload }),
+  z.object({ ...base, type: z.literal('check_run'), payload: checkRunPayload }),
+  z.object({ ...base, type: z.literal('plan'), payload: planPayload }),
+  z.object({ ...base, type: z.literal('steer'), payload: steerPayload }),
+  z.object({ ...base, type: z.literal('steer_applied'), payload: steerAppliedPayload }),
+  z.object({ ...base, type: z.literal('test_plan'), payload: testPlanPayload }),
+  z.object({ ...base, type: z.literal('approval_request'), payload: approvalRequestPayload }),
+  z.object({ ...base, type: z.literal('coordination'), payload: coordinationPayload }),
+  z.object({ ...base, type: z.literal('approval_decision'), payload: approvalDecisionPayload }),
+  z.object({ ...base, type: z.literal('test_verdict'), payload: testVerdictPayload }),
   z.object({ ...base, type: z.literal('tool_call'), payload: toolCallPayload }),
   z.object({ ...base, type: z.literal('tool_result'), payload: toolResultPayload }),
   z.object({ ...base, type: z.literal('file_change'), payload: fileChangePayload }),
@@ -155,6 +256,16 @@ export const eventPayloadSchemas = {
   assistant_message: assistantMessagePayload,
   thinking_delta: thinkingDeltaPayload,
   thought: thoughtPayload,
+  check_started: checkStartedPayload,
+  check_run: checkRunPayload,
+  plan: planPayload,
+  steer: steerPayload,
+  steer_applied: steerAppliedPayload,
+  test_plan: testPlanPayload,
+  approval_request: approvalRequestPayload,
+  coordination: coordinationPayload,
+  approval_decision: approvalDecisionPayload,
+  test_verdict: testVerdictPayload,
   tool_call: toolCallPayload,
   tool_result: toolResultPayload,
   file_change: fileChangePayload,
@@ -172,6 +283,15 @@ export const PERSISTED_EVENT_TYPES: SessionEventType[] = [
   'user_message',
   'assistant_message',
   'thought',
+  'check_run',
+  'plan',
+  'steer',
+  'steer_applied',
+  'test_plan',
+  'test_verdict',
+  'approval_request',
+  'approval_decision',
+  'coordination',
   'tool_call',
   'tool_result',
   'file_change',
@@ -197,6 +317,32 @@ export function eventGist(event: SessionEvent): string {
       return 'agent is thinking…'
     case 'thought':
       return `thinking: ${truncate(event.payload.text.replace(/\s+/g, ' '), 64)}`
+    case 'check_started':
+      return `${event.payload.byName} is running checks…`
+    case 'check_run':
+      return `checks ${event.payload.status}`
+    case 'plan': {
+      const doing = event.payload.steps.find((s) => s.status === 'doing') ?? event.payload.steps.find((s) => s.status === 'todo')
+      return doing ? `plan: ${truncate(doing.text, 60)}` : 'plan complete'
+    }
+    case 'steer':
+      return `${event.payload.byName} steered: ${truncate(event.payload.text, 60)}`
+    case 'steer_applied':
+      return 'the agent picked up the steer'
+    case 'coordination':
+      return event.payload.kind === 'conflict'
+        ? `conflict caught with ${event.payload.withName}`
+        : event.payload.kind === 'resolved'
+          ? `conflict with ${event.payload.withName} resolved`
+          : `briefed on ${event.payload.withName}'s work`
+    case 'approval_request':
+      return `the agent needs approval: ${truncate(event.payload.summary, 60)}`
+    case 'approval_decision':
+      return event.payload.decision === 'expired' ? 'an approval request lapsed' : `${event.payload.byName} ${event.payload.decision} an agent action`
+    case 'test_plan':
+      return `${event.payload.cases.length} test case${event.payload.cases.length === 1 ? '' : 's'} to try in the preview`
+    case 'test_verdict':
+      return `${event.payload.byName} marked a test ${event.payload.verdict === 'pass' ? 'passing' : 'failing'}`
     case 'tool_call': {
       const p = event.payload.input?.['path']
       return typeof p === 'string'

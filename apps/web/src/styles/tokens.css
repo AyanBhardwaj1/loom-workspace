@@ -1,86 +1,89 @@
 /**
- * Loom design tokens — the ONLY place raw color/size/motion values may live.
- * (The one other sanctioned home for hex values is the shiki `loom-charcoal`
- * theme in src/lib/highlighter.ts.) Everything else derives from these
- * custom properties, mostly via the Tailwind theme mapping in tailwind.config.
+ * Loom design tokens — "Swiss Industrial Print": unbleached documentation
+ * paper, carbon ink, one aviation-red signal, 90° corners, visible rules.
+ * The ONLY place raw color/size/motion values live (plus the shiki theme in
+ * src/lib/highlighter.ts). Tailwind maps onto these in tailwind.config.js.
  *
- * Rules (see DESIGN.md):
- *  - hairlines are 1px, three alphas; nothing thicker anywhere
- *  - lavender = liveness + primary action only; --lav-glow is the app's ONE glow
- *  - text on lavender fills is dark (--text-on-accent)
- *  - radii: 6 controls · 8 cards · 10 modals · 999 pills
+ * Rules (DESIGN.md):
+ *  - one accent: --signal. It marks liveness, alerts and vital data — never decoration
+ *  - no gradients, no blur, no soft shadows, no border-radius
+ *  - structure is drawn with rules: --rule-soft for zones, --rule (ink) for frames
+ *  - every text color clears 4.5:1 on paper, surface AND sunk (computed, not eyeballed)
  */
 :root {
-  color-scheme: dark;
+  color-scheme: light;
 
-  /* ---- canvas & surfaces (flat solids over the shader canvas) ---- */
-  --bg-canvas: #0b0b0e; /* CSS fallback + body bg behind the shader */
-  --bg-canvas-mid: #101014; /* fallback-gradient stops (the shader's CSS twin) */
-  --bg-canvas-high: #16161a;
-  --bg-surface: #141417; /* cards, tiles, sidebar */
-  --bg-raised: #1a1a1e; /* bubbles, composer, hover fills, toasts */
-  --bg-overlay: #202024; /* modals, dropdowns, popovers, palette */
-  --bg-inset: #0b0b0d; /* code, diff bodies, key inputs */
+  /* ---- substrate ---- */
+  --bg-canvas: #f4f4f0; /* paper */
+  --bg-canvas-mid: #f4f4f0;
+  --bg-canvas-high: #f4f4f0;
+  --bg-surface: #fbfbf8; /* a fresh sheet laid on the paper */
+  --bg-raised: #eeede7; /* hover / pressed zones */
+  --bg-overlay: #fbfbf8; /* dialogs + popovers: framed by a 2px ink rule instead of a shadow */
+  --bg-inset: #e9e8e2; /* code, wells, inputs */
 
-  /* ---- hairlines (1px only) ---- */
-  --hairline: rgba(255, 255, 255, 0.06);
-  --hairline-hover: rgba(255, 255, 255, 0.1);
-  --hairline-strong: rgba(255, 255, 255, 0.15);
+  /* ---- rules ---- */
+  --hairline: rgba(17, 17, 17, 0.16);
+  --hairline-hover: rgba(17, 17, 17, 0.32);
+  --hairline-strong: #111111;
 
-  /* ---- text ---- */
-  --text-primary: #ededf0;
-  --text-secondary: #a6a6af;
-  --text-tertiary: rgba(255, 255, 255, 0.48); /* ≥4.5:1 on every surface (gate 1) */
-  --text-disabled: rgba(255, 255, 255, 0.25);
-  --text-linenumber: rgba(255, 255, 255, 0.36); /* diff gutters — ≥3:1 on inset (gate 1) */
-  --text-on-accent: #131316;
-  --text-on-identity: #0e0e10; /* avatar initials on founder colors */
+  /* ---- ink ---- */
+  --text-primary: #111111; /* 17.1:1 on paper */
+  --text-secondary: #3b3b37; /* 10.2:1 */
+  --text-tertiary: #5f5e58; /* 5.3:1 even on --bg-inset */
+  --text-disabled: rgba(17, 17, 17, 0.32);
+  --text-linenumber: #6f6e67;
+  --text-on-accent: #ffffff; /* on --signal: 5.5:1 */
+  --text-on-identity: #111111;
 
-  /* ---- muted lavender (the signature) ---- */
-  --lav-300: #bdb2f9;
-  --lav-400: #afa4f6;
-  --lav-500: #9c8ff2;
-  --lav-600: #8a7be8;
-  --lav-fill: rgba(156, 143, 242, 0.1);
-  --lav-border: rgba(156, 143, 242, 0.32);
-  --lav-glow: rgba(156, 143, 242, 0.35);
+  /* ---- the signal (aviation red) ---- */
+  --signal-300: #d01414; /* text-safe red: 5.0:1 on paper */
+  --signal-400: #b81010;
+  --signal-500: #d01414;
+  --signal-600: #9e0d0d;
+  --signal-fill: rgba(208, 20, 20, 0.07);
+  --signal-border: #d01414;
+  --signal-glow: transparent;
 
-  /* ---- semantic, desaturated for charcoal ---- */
-  --ok: #4cc38a;
-  --ok-fill: rgba(76, 195, 138, 0.09);
-  --ok-border: rgba(76, 195, 138, 0.28);
-  --danger: #e5646b;
-  --danger-fill: rgba(229, 100, 107, 0.09);
-  --danger-border: rgba(229, 100, 107, 0.28);
-  --warn: #e0b45c;
-  --warn-fill: rgba(224, 180, 92, 0.09);
-  --warn-border: rgba(224, 180, 92, 0.28);
+  /* ---- semantic ---- */
+  --ok: #1c7a3a;
+  --ok-fill: rgba(28, 122, 58, 0.08);
+  --ok-border: rgba(28, 122, 58, 0.5);
+  --danger: #d01414;
+  --danger-fill: rgba(208, 20, 20, 0.07);
+  --danger-border: rgba(208, 20, 20, 0.55);
+  --warn: #8a5a00;
+  --warn-fill: rgba(138, 90, 0, 0.08);
+  --warn-border: rgba(138, 90, 0, 0.5);
 
-  /* ---- overlay scrim ---- */
-  --scrim: rgba(11, 11, 14, 0.55);
+  --scrim: rgba(17, 17, 17, 0.45);
 
-  /* ---- the thread ---- */
-  --thread-rest: rgba(255, 255, 255, 0.07);
-  --thread-hover: rgba(255, 255, 255, 0.14);
-  --thread-node: rgba(255, 255, 255, 0.2);
-  --thread-branch: rgba(255, 255, 255, 0.1);
-  --thread-branch-active: rgba(255, 255, 255, 0.2);
+  /* ---- the timeline rule (event log gutter) ---- */
+  --thread-rest: rgba(17, 17, 17, 0.18);
+  --thread-hover: rgba(17, 17, 17, 0.4);
+  --thread-node: #111111;
+  --thread-branch: rgba(17, 17, 17, 0.3);
+  --thread-branch-active: #111111;
 
-  /* ---- motion ---- */
-  --t-micro: 120ms;
-  --t-fast: 180ms;
-  --t-enter: 240ms;
-  --t-moment: 560ms; /* representative; individual moments 420–700ms */
-  --ease-out: cubic-bezier(0.25, 1, 0.5, 1); /* loom-out: entrances */
-  --ease-standard: cubic-bezier(0.2, 0, 0, 1); /* loom-standard */
-  --ease-exit: cubic-bezier(0.4, 0, 1, 1);
+  /* ---- motion: mechanical, short ---- */
+  --t-micro: 90ms;
+  --t-fast: 140ms;
+  --t-enter: 200ms;
+  --t-moment: 420ms;
+  --ease-out: cubic-bezier(0.2, 0.9, 0.1, 1);
+  --ease-standard: cubic-bezier(0.3, 0, 0.1, 1);
+  --ease-exit: cubic-bezier(0.5, 0, 1, 1);
 
-  /* ---- elevation (the only two shadows) ---- */
-  --shadow-modal: 0 8px 32px rgba(0, 0, 0, 0.45);
-  --shadow-dropdown: 0 4px 16px rgba(0, 0, 0, 0.35);
-  --glow-live: 0 0 0 1px var(--lav-border), 0 0 24px -12px var(--lav-glow);
+  /* ---- elevation = a frame, never a shadow ---- */
+  --shadow-modal: 0 0 0 2px #111111, 8px 8px 0 0 rgba(17, 17, 17, 0.12);
+  --shadow-dropdown: 0 0 0 1px #111111, 4px 4px 0 0 rgba(17, 17, 17, 0.1);
+  --glow-live: inset 0 0 0 2px #d01414;
 
-  /* ---- scrollbars / selection ---- */
-  --scroll-thumb: rgba(255, 255, 255, 0.15);
-  --scroll-thumb-hover: rgba(255, 255, 255, 0.25);
+  --scroll-thumb: rgba(17, 17, 17, 0.28);
+  --scroll-thumb-hover: rgba(17, 17, 17, 0.5);
+}
+
+:root {
+  /* blueprint grid on the paper (index.css body) */
+  --grid-line: rgba(17, 17, 17, 0.045);
 }

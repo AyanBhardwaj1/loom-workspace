@@ -11,7 +11,25 @@ import { BRAND, slugify } from '@loom/shared'
 export class MockAgentProvider implements AgentProvider {
   constructor(private opts: { fast?: boolean } = {}) {}
 
-  async *runTurn(ctx: AgentTurnContext): AsyncIterable<AgentStreamItem> {
+  async *runTurn(outer: AgentTurnContext): AsyncIterable<AgentStreamItem> {
+    // steering arrives inside a tool result (like a real model sees it); the
+    // mock acknowledges it out loud before its next action, as the prompt asks
+    const acks: string[] = []
+    const coordAcks: string[] = []
+    const ctx: AgentTurnContext = {
+      ...outer,
+      executeTool: async (name, input) => {
+        const exec = await outer.executeTool(name, input)
+        const marker = exec.content?.indexOf('[STEERING') ?? -1
+        if (marker >= 0) {
+          const notes = exec.content!.slice(marker).split('\n').slice(1).filter(Boolean)
+          for (const n of notes) acks.push(n)
+        }
+        const coord = /\[COORDINATION — a test-merge found your change conflicts with ([^:]+):/.exec(exec.content ?? '')
+        if (coord) coordAcks.push(coord[1]!)
+        return exec
+      },
+    }
     const say = this.makeSpeaker(ctx.signal)
     const parts: string[] = []
     const speak = async function* (this: MockAgentProvider, text: string): AsyncIterable<AgentStreamItem> {
@@ -24,12 +42,50 @@ export class MockAgentProvider implements AgentProvider {
       // "watch it think" lane works in keyless demos too
       for await (const token of this.makeThinker(ctx.signal)(mockPlan(ctx))) yield token
       const playbook = pickPlaybook(ctx)
+      // briefed by the radar: say so, like a real agent reading its context would
+      const also = ctx.coordination ? /- (\S+)'s agent \([^)]*\) is ALSO changing ([^:]+):/.exec(ctx.coordination) : null
+      if (also) yield* speak(`Heads-up from the radar: ${also[1]}'s agent is also changing ${also[2]} — I'll stay clear of their parts. `)
+      // the intent broadcast a real model sends via update_plan
+      const steps = (status: 'todo' | 'doing' | 'done', verify: 'todo' | 'doing' | 'done') => [
+        { text: 'Read the request and the workspace', status: 'done' as const },
+        { text: 'Make the change', status },
+        { text: 'Verify with the team checks', status: verify },
+      ]
+      if (!ctx.signal.aborted) {
+        yield { kind: 'tool_call', name: 'update_plan', input: { steps: steps('doing', 'todo') } }
+        await ctx.executeTool('update_plan', { steps: steps('doing', 'todo') })
+      }
       // Check abort BEFORE yielding the next item, never after: the previous
       // item's tool execution has already completed by then, so a stop never
       // leaves a tool_call without its result.
+      const acknowledge = async function* (): AsyncIterable<AgentStreamItem> {
+        while (coordAcks.length > 0) {
+          const who = coordAcks.shift()!
+          yield* speak(`The radar says my change collides with ${who} — I'll keep their part as it is and fit mine around it. `)
+        }
+        while (acks.length > 0) {
+          const note = acks.shift()!
+          const [who, ...rest] = note.split(': ')
+          yield* speak(`Got it — ${who} wants “${rest.join(': ').slice(0, 120)}”. I’ll fold that into the remaining steps rather than redo what’s already done. `)
+        }
+      }
       for await (const item of playbook(ctx, speak, (ms) => this.pause(ms, ctx.signal))) {
         if (ctx.signal.aborted) break
+        yield* acknowledge()
         yield item
+      }
+      yield* acknowledge()
+      // verify like a real agent would, then close the plan
+      if (!ctx.signal.aborted) {
+        yield { kind: 'tool_call', name: 'run_checks', input: {} }
+        await ctx.executeTool('run_checks', {})
+        // hand the team acceptance tests for what was asked — they try them in the preview
+        const cases = mockTestCases(ctx)
+        yield { kind: 'tool_call', name: 'propose_tests', input: { cases } }
+        await ctx.executeTool('propose_tests', { cases })
+        yield* acknowledge()
+        yield { kind: 'tool_call', name: 'update_plan', input: { steps: steps('done', 'done') } }
+        await ctx.executeTool('update_plan', { steps: steps('done', 'done') })
       }
       // keep whatever the agent said before being stopped
       const out = parts.join('')
@@ -95,13 +151,50 @@ type Speak = (text: string) => AsyncIterable<AgentStreamItem>
 type Pause = (ms: number) => Promise<void>
 type Playbook = (ctx: AgentTurnContext, speak: Speak, pause: Pause) => AsyncGenerator<AgentStreamItem>
 
+/** Acceptance tests derived from the request (what a teammate would try), not from the code. */
+function mockTestCases(ctx: AgentTurnContext): Array<{ action: string; expect: string }> {
+  const m = ctx.userMessage.toLowerCase()
+  const cases: Array<{ action: string; expect: string }> = []
+  if (/waitlist|form|signup|sign up|email/.test(m)) {
+    cases.push({ action: 'Submit the form with a valid email', expect: 'A confirmation message appears and the field clears' })
+    cases.push({ action: 'Submit the form with the email left empty', expect: 'It refuses and says an email is needed' })
+  }
+  if (/feature|grid|card/.test(m)) cases.push({ action: 'Scroll to the features section', expect: 'Three cards, evenly spaced, each with an icon, title and text' })
+  if (/footer|link/.test(m)) cases.push({ action: 'Click each footer link', expect: 'None of them leads to a missing page' })
+  if (/hero|landing|page/.test(m) && cases.length < 2) cases.push({ action: 'Open the page on a narrow (phone-width) window', expect: 'The headline and call to action stay readable, nothing scrolls sideways' })
+  if (cases.length === 0) cases.push({ action: `Try what was asked: “${ctx.userMessage.slice(0, 80)}”`, expect: 'It works the way the request describes' })
+  return cases.slice(0, 4)
+}
+
 function pickPlaybook(ctx: AgentTurnContext): Playbook {
+  // "delete / remove …" exercises guarded actions: the delete waits for a teammate
+  if (/\b(delete|remove|clean ?up)\b/i.test(ctx.userMessage)) return cleanupPlaybook
   const name = ctx.moduleName.toLowerCase()
   if (/land|home|hero|market|site/.test(name)) return landingPlaybook
   if (/auth|login|sign/.test(name)) return authPlaybook
   if (/edit/.test(name)) return editorPlaybook
   if (/notif|alert|inbox/.test(name)) return notificationsPlaybook
   return genericPlaybook
+}
+
+// ---------------------------------------------------------------------------
+// Clean-up playbook — a destructive step, so the room's approval rule shows
+// ---------------------------------------------------------------------------
+async function* cleanupPlaybook(ctx: AgentTurnContext, speak: Speak, pause: Pause): AsyncGenerator<AgentStreamItem> {
+  const keep = new Set(['index.html', 'styles.css', 'README.md'])
+  let target = ctx.fileTree.find((f) => !keep.has(f) && !f.startsWith('.'))
+  if (!target) {
+    // nothing removable yet: leave a scratch file so there's something to clean up
+    target = 'notes-old.txt'
+    yield* speak('There\u2019s no leftover file yet, so I\u2019ll note the old copy first, then remove it. ')
+    yield { kind: 'tool_call', name: 'write_file', input: { path: target, content: 'Old notes — safe to delete.\n' } }
+    await ctx.executeTool('write_file', { path: target, content: 'Old notes — safe to delete.\n' })
+  }
+  yield* speak(`Removing ${target} — deleting is guarded, so a teammate gets to approve it first. `)
+  await pause(200)
+  yield { kind: 'tool_call', name: 'delete_file', input: { path: target } }
+  const res = await ctx.executeTool('delete_file', { path: target })
+  yield* speak(res.ok ? `Done — ${target} is gone.` : `It wasn\u2019t approved, so ${target} stays. Nothing else changed.`)
 }
 
 // ---------------------------------------------------------------------------

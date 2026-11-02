@@ -2,38 +2,38 @@ import { createHighlighterCore, type HighlighterCore, type ThemeRegistrationRaw 
 import { createOnigurumaEngine } from 'shiki/engine/oniguruma'
 
 /**
- * `loom-charcoal` — the one code theme, shared by static diffs and the
- * magic-move evolution player so highlighting is identical everywhere.
- * This file is the second (and last) sanctioned home for raw hex values,
- * alongside src/styles/tokens.css.
+ * `loom-print` — the one code theme: carbon ink on documentation paper,
+ * shared by static diffs and the magic-move evolution player. This file is
+ * the second (and last) sanctioned home for raw hex values, alongside
+ * src/styles/tokens.css. Every foreground clears 4.5:1 on #E9E8E2.
  */
-export const loomCharcoal: ThemeRegistrationRaw = {
-  name: 'loom-charcoal',
-  type: 'dark',
+export const loomPrint: ThemeRegistrationRaw = {
+  name: 'loom-print',
+  type: 'light',
   colors: {
-    'editor.background': '#0B0B0D',
-    'editor.foreground': '#D2D2D8',
+    'editor.background': '#E9E8E2',
+    'editor.foreground': '#1A1A18',
   },
   settings: [
-    { settings: { background: '#0B0B0D', foreground: '#D2D2D8' } },
-    { scope: ['keyword', 'storage.type', 'storage.modifier', 'keyword.control'], settings: { foreground: '#A9A1F0' } },
+    { settings: { background: '#E9E8E2', foreground: '#1A1A18' } },
+    { scope: ['keyword', 'storage.type', 'storage.modifier', 'keyword.control'], settings: { foreground: '#111111', fontStyle: 'bold' } },
     {
       scope: ['string', 'string.quoted', 'punctuation.definition.string', 'markup.inline.raw'],
-      settings: { foreground: '#7FBF9E' },
+      settings: { foreground: '#1C6B33' },
     },
     {
       scope: ['entity.name.function', 'support.function', 'variable.other.property', 'support.type.property-name', 'entity.name.tag'],
-      settings: { foreground: '#D2D2D8' },
+      settings: { foreground: '#111111' },
     },
-    { scope: ['constant.numeric', 'constant.language', 'constant.other'], settings: { foreground: '#C9A97A' } },
-    { scope: ['comment', 'punctuation.definition.comment'], settings: { foreground: '#FFFFFF52' } },
+    { scope: ['constant.numeric', 'constant.language', 'constant.other'], settings: { foreground: '#7A4F00' } },
+    { scope: ['comment', 'punctuation.definition.comment'], settings: { foreground: '#5F5E58', fontStyle: 'italic' } },
     {
       scope: ['punctuation', 'meta.brace', 'punctuation.separator', 'punctuation.terminator'],
-      settings: { foreground: '#D2D2D880' },
+      settings: { foreground: '#4A4944' },
     },
-    { scope: ['entity.name.type', 'support.type', 'support.class'], settings: { foreground: '#BDB2F9' } },
-    { scope: ['variable', 'variable.parameter'], settings: { foreground: '#EDEDF0' } },
-    { scope: ['markup.heading'], settings: { foreground: '#EDEDF0' } },
+    { scope: ['entity.name.type', 'support.type', 'support.class'], settings: { foreground: '#9E0D0D' } },
+    { scope: ['variable', 'variable.parameter'], settings: { foreground: '#1A1A18' } },
+    { scope: ['markup.heading'], settings: { foreground: '#111111', fontStyle: 'bold' } },
   ],
 }
 
@@ -42,7 +42,7 @@ let corePromise: Promise<HighlighterCore> | null = null
 /** Lazy singleton — langs load once, on first code render. */
 export function getHighlighter(): Promise<HighlighterCore> {
   corePromise ??= createHighlighterCore({
-    themes: [loomCharcoal],
+    themes: [loomPrint],
     langs: [
       import('@shikijs/langs/html'),
       import('@shikijs/langs/css'),

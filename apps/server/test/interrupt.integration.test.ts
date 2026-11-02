@@ -19,7 +19,7 @@ describe('interrupt (stop) — orchestrator', () => {
 
     const turn = await services.orchestrator.handleUserMessage(session.id, user, 'Build the hero section')
     expect(turn.ok).toBe(true)
-    expect(services.orchestrator.isBusy(session.id)).toBe(true)
+    expect(await services.orchestrator.isBusy(session.id)).toBe(true)
 
     // interrupt shortly after it starts
     await new Promise((r) => setTimeout(r, 60))
@@ -33,7 +33,7 @@ describe('interrupt (stop) — orchestrator', () => {
     expect(lastStatus.type === 'status' && lastStatus.payload.note).toBe('Stopped by driver')
 
     // the session is released, not stuck busy
-    expect(services.orchestrator.isBusy(session.id)).toBe(false)
+    expect(await services.orchestrator.isBusy(session.id)).toBe(false)
     expect((await services.sessions.getSession(session.id))!.status).toBe('idle')
 
     // no tool_call was left without its result (pairing preserved across a stop)

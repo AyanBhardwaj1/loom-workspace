@@ -1,6 +1,6 @@
 import path from 'node:path'
 import { and, desc, eq, inArray, lt, sql } from 'drizzle-orm'
-import { BRAND } from '@loom/shared'
+import { BRAND, DEFAULT_POLICY, type ProjectPolicy } from '@loom/shared'
 import { ulid } from 'ulid'
 import type {
   ChangeSummary,
@@ -13,7 +13,7 @@ import type {
 import { toPublicUser } from '../auth/service'
 import type { DbHandle } from '../db/client'
 import type { ServerConfig } from '../env'
-import { GitService } from '../git/gitService'
+import { initRepo, openRepo, type Repo } from '../git/repo'
 
 type ProjectRow = typeof import('../db/schema.sqlite').projects.$inferSelect
 type ModuleRow = typeof import('../db/schema.sqlite').modules.$inferSelect
@@ -84,15 +84,14 @@ export class ProjectService {
     const { db, t } = this.dbh
     const id = ulid()
     const repoPath = path.join(this.config.dataDir, 'projects', id, 'repo')
-    await GitService.initRepo(repoPath, projectReadme(name, description), {
-      name: creator.name,
-      email: creator.email,
-    })
+    await initRepo(repoPath, projectReadme(name, description), { name: creator.name, email: creator.email }, { config: this.config, dbh: this.dbh })
 
     const now = new Date().toISOString()
     const project: ProjectRow = { id, name: name.trim(), description: description.trim(), repoPath, createdBy: creator.id, createdAt: now }
     await db.insert(t.projects).values(project)
     await db.insert(t.projectMembers).values({ projectId: id, userId: creator.id })
+    // new projects get the full gate: nothing reaches main the room hasn't seen work
+    await this.setPolicy(id, { ...DEFAULT_POLICY, mergeGate: 'enforce' })
 
     const defaults: Array<{ name: string; description: string; emoji: string }> = [
       { name: 'Landing page', description: 'The public face of the product', emoji: '🏠' },
@@ -303,8 +302,36 @@ export class ProjectService {
     })
   }
 
-  gitFor(project: ProjectRow): GitService {
-    return new GitService(project.repoPath)
+  // ---------------------------------------------------------------- policy
+  /** the room's rules for this project (merge gate, guarded actions, freeze) */
+  async getPolicy(projectId: string): Promise<ProjectPolicy> {
+    const { db, t } = this.dbh
+    const [row] = await db.select().from(t.appSettings).where(eq(t.appSettings.key, `policy:${projectId}`))
+    if (!row) return { ...DEFAULT_POLICY }
+    try {
+      return { ...DEFAULT_POLICY, ...(JSON.parse(row.value) as Partial<ProjectPolicy>) }
+    } catch {
+      return { ...DEFAULT_POLICY }
+    }
+  }
+
+  async setPolicy(projectId: string, policy: ProjectPolicy): Promise<void> {
+    const { db, t } = this.dbh
+    const value = JSON.stringify(policy)
+    await db
+      .insert(t.appSettings)
+      .values({ key: `policy:${projectId}`, value })
+      .onConflictDoUpdate({ target: t.appSettings.key, set: { value } })
+  }
+
+  async memberCount(projectId: string): Promise<number> {
+    const { db, t } = this.dbh
+    const rows = await db.select({ n: sql<number>`count(*)` }).from(t.projectMembers).where(eq(t.projectMembers.projectId, projectId))
+    return Number(rows[0]?.n ?? 0)
+  }
+
+  gitFor(project: ProjectRow): Repo {
+    return openRepo(project.repoPath, { config: this.config, dbh: this.dbh })
   }
 }
 

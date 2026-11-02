@@ -8,6 +8,9 @@ import { attachWebSocket } from './realtime/ws'
 import { authRoutes } from './routes/auth'
 import { devRoutes } from './routes/dev'
 import { previewRoutes } from './routes/preview'
+import { realtimeRoutes } from './routes/realtime'
+import { coordinationRoutes } from './routes/coordination'
+import { mcpRoutes } from './routes/mcp'
 import { projectRoutes } from './routes/projects'
 import { notificationRoutes } from './routes/notifications'
 import { replayRoutes } from './routes/replay'
@@ -22,6 +25,8 @@ export async function buildApp(services: Services): Promise<FastifyInstance> {
   const app = Fastify({
     logger: { level: config.isDev ? 'warn' : 'info' },
     bodyLimit: 1024 * 1024,
+    // signed preview tokens ride in the path (routes/preview.ts) — above the 100-char default
+    maxParamLength: 256,
     // deployment: honor X-Forwarded-* from a fronting proxy/tunnel
     // (Cloudflare Tunnel, nginx, Caddy) so req.protocol reflects real TLS
     trustProxy: true,
@@ -87,6 +92,9 @@ export async function buildApp(services: Services): Promise<FastifyInstance> {
   await sessionRoutes(app, services)
   await settingsRoutes(app, services)
   await previewRoutes(app, services)
+  await realtimeRoutes(app, services)
+  await coordinationRoutes(app, services)
+  await mcpRoutes(app, services)
   await replayRoutes(app, services)
   await notificationRoutes(app, services)
   if (config.isDev) {

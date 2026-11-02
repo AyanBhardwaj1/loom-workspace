@@ -3,6 +3,7 @@ import fsp from 'node:fs/promises'
 import path from 'node:path'
 import { Worker } from 'node:worker_threads'
 import { execa } from 'execa'
+import { runChecks, summarizeChecks } from '../checks/runChecks'
 import type { AgentToolExecution } from '@loom/shared'
 
 const MAX_COMMAND_OUTPUT = 10_000 // 10KB
@@ -113,6 +114,12 @@ export class ToolExecutor {
           return await this.deleteFile(input)
         case 'search_files':
           return await this.searchFiles(input)
+        case 'run_checks':
+          return await this.runChecks()
+        case 'update_plan':
+          return this.updatePlan(input)
+        case 'propose_tests':
+          return this.proposeTests(input)
         case 'run_command':
           return await this.runCommand(input)
         default:
@@ -264,6 +271,50 @@ export class ToolExecutor {
     }
   }
 
+  /** The same smoke test teammates watch — the agent verifying its own work. */
+  private async runChecks(): Promise<AgentToolExecution> {
+    const run = await runChecks(this.root)
+    return {
+      summary: run.status === 'passed' ? `Checks passed (${run.results.length})` : `Checks ${run.status}`,
+      ok: run.status !== 'failed',
+      content: summarizeChecks(run),
+      artifact: { kind: 'check_run', status: run.status, results: run.results, durationMs: run.durationMs },
+    }
+  }
+
+  /** Validated here; broadcast to the room as a `plan` event by the orchestrator. */
+  private updatePlan(input: Record<string, unknown>): AgentToolExecution {
+    const raw = Array.isArray(input.steps) ? input.steps : null
+    if (!raw || raw.length === 0) throw new ToolError('"steps" must be a non-empty array of {text, status}')
+    const steps = raw.slice(0, 12).map((step) => {
+      const st = step as { text?: unknown; status?: unknown }
+      const text = typeof st.text === 'string' ? st.text.trim().slice(0, 200) : ''
+      const status = st.status === 'done' || st.status === 'doing' ? st.status : 'todo'
+      if (!text) throw new ToolError('every step needs "text"')
+      return { text, status: status as 'todo' | 'doing' | 'done' }
+    })
+    const done = steps.filter((x) => x.status === 'done').length
+    return { summary: `Plan: ${done}/${steps.length} done`, ok: true, content: 'ok, plan shared with the team', artifact: { kind: 'plan', steps } }
+  }
+
+  private proposeTests(input: Record<string, unknown>): AgentToolExecution {
+    const raw = Array.isArray(input.cases) ? input.cases : null
+    if (!raw || raw.length === 0) throw new ToolError('"cases" must be a non-empty array of {action, expect}')
+    const cases = raw.slice(0, 8).map((c) => {
+      const tc = c as { action?: unknown; expect?: unknown }
+      const action = typeof tc.action === 'string' ? tc.action.trim().slice(0, 200) : ''
+      const expect = typeof tc.expect === 'string' ? tc.expect.trim().slice(0, 200) : ''
+      if (!action || !expect) throw new ToolError('every case needs "action" and "expect"')
+      return { action, expect }
+    })
+    return {
+      summary: `Proposed ${cases.length} test case${cases.length === 1 ? '' : 's'} for the team`,
+      ok: true,
+      content: 'ok — teammates will try these in the live preview; their pass/fail verdicts arrive in a later turn',
+      artifact: { kind: 'test_plan', cases },
+    }
+  }
+
   private async runCommand(input: Record<string, unknown>): Promise<AgentToolExecution> {
     const command = typeof input.command === 'string' ? input.command.trim() : ''
     if (!command) throw new ToolError('"command" (string) is required')
@@ -411,6 +462,50 @@ export const AGENT_TOOL_DEFS = [
       type: 'object' as const,
       properties: { command: { type: 'string', description: 'e.g. "node index.js"' } },
       required: ['command'],
+    },
+  },
+  {
+    name: 'run_checks',
+    description:
+      "Run the team's smoke test on the workspace — entry page, broken links and assets, page basics, image alt text, CSS, JavaScript syntax, and the package test script if one exists. Teammates watch the results live. Run it after meaningful changes and fix what it reports before you finish.",
+    input_schema: { type: 'object' as const, properties: {}, required: [] },
+  },
+  {
+    name: 'propose_tests',
+    description:
+      'After you build or change a user-facing feature, list 1–8 acceptance tests a teammate can try in the live preview: each an "action" (what to do, e.g. "Submit the waitlist form with an empty email") and an "expect" (what should happen). Derive them from what was requested, not from your code. Teammates mark each pass or fail; failures come back to you with their notes.',
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        cases: {
+          type: 'array',
+          items: {
+            type: 'object',
+            properties: { action: { type: 'string' }, expect: { type: 'string' } },
+            required: ['action', 'expect'],
+          },
+        },
+      },
+      required: ['cases'],
+    },
+  },
+  {
+    name: 'update_plan',
+    description:
+      'Share your plan with the people watching: 2–8 short steps, each todo / doing / done. Call it before starting multi-step work and again as steps complete, so teammates can see where you are and suggest changes before you get there.',
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        steps: {
+          type: 'array',
+          items: {
+            type: 'object',
+            properties: { text: { type: 'string' }, status: { type: 'string', enum: ['todo', 'doing', 'done'] } },
+            required: ['text', 'status'],
+          },
+        },
+      },
+      required: ['steps'],
     },
   },
 ]

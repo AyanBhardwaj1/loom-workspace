@@ -4,13 +4,13 @@ import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { Eye, FlaskConical, Plus } from 'lucide-react'
 import type { ChangeSummary, ModuleDto, SessionSummary } from '@loom/shared'
 import { Modal } from '../components/overlay'
-import { Avatar, Button, LivePill, PageHeader, Pill, cn } from '../components/primitives'
+import { Avatar, Button, LivePill, PageHeader, Pill, buttonVariants, cn } from '../components/primitives'
 import { api } from '../lib/api'
 import { timeAgo, useNow } from '../lib/time'
 import { useAuth } from '../state/auth'
 import { useProject } from './ProjectShell'
+import { RoomRules } from '../components/RoomRules'
 
-const EMOJI_CHOICES = ['📦', '🏠', '🔐', '📝', '🔔', '💳', '🔍', '📊', '⚡', '🎨', '🧪', '🚀']
 
 export function ProjectDashboard() {
   const { projectId, detailQuery, feed } = useProject()
@@ -21,7 +21,6 @@ export function ProjectDashboard() {
   const [moduleDialog, setModuleDialog] = useState(false)
   const [moduleName, setModuleName] = useState('')
   const [moduleDesc, setModuleDesc] = useState('')
-  const [moduleEmoji, setModuleEmoji] = useState('📦')
   const [creating, setCreating] = useState(false)
   const [moduleError, setModuleError] = useState<string | null>(null)
   const [ghostBusy, setGhostBusy] = useState(false)
@@ -41,7 +40,7 @@ export function ProjectDashboard() {
       await api.post(`/api/projects/${projectId}/modules`, {
         name: moduleName.trim(),
         description: moduleDesc.trim(),
-        emoji: moduleEmoji,
+        emoji: '📦',
       })
       await queryClient.invalidateQueries({ queryKey: ['project', projectId] })
       setModuleDialog(false)
@@ -90,7 +89,7 @@ export function ProjectDashboard() {
             <span className="tnum">
               {detail.description}
               {activeByModule.size > 0 && (
-                <span className="ml-2 inline-flex items-center gap-1.5 text-lav-300">
+                <span className="ml-2 inline-flex items-center gap-1.5 text-signal-300">
                   <span aria-hidden className="text-tertiary">·</span>
                   {activeByModule.size} module{activeByModule.size === 1 ? '' : 's'} live
                 </span>
@@ -98,7 +97,13 @@ export function ProjectDashboard() {
             </span>
           }
           actions={
-            devMode ? (
+            <>
+            {activeByModule.size > 0 && (
+              <Link to={`/p/${projectId}/room`} className={buttonVariants({ variant: 'primary', size: 'md' })}>
+                Open the room — {activeByModule.size} live
+              </Link>
+            )}
+            {devMode ? (
               <button
                 onClick={() => void simulateTeammate()}
                 disabled={ghostBusy}
@@ -108,19 +113,21 @@ export function ProjectDashboard() {
                 <FlaskConical size={14} strokeWidth={1.5} aria-hidden />
                 {ghostBusy ? 'Starting…' : 'Simulate teammate'}
               </button>
-            ) : undefined
+            ) : null}
+            </>
           }
         />
         {ghostNote && (
-          <div role="status" className="-mt-3 mb-5 text-small text-lav-300">
+          <div role="status" className="-mt-3 mb-5 text-small text-signal-300">
             {ghostNote}
           </div>
         )}
 
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3">
-          {detail.modules.map((m) => (
+          {detail.modules.map((m, i) => (
             <ModuleCard
               key={m.id}
+              unit={`U-${String(i + 1).padStart(2, '0')}`}
               module={m}
               projectId={projectId}
               live={activeByModule.get(m.id) ?? null}
@@ -132,7 +139,7 @@ export function ProjectDashboard() {
           ))}
           <button
             onClick={() => setModuleDialog(true)}
-            className="flex min-h-[8.5rem] flex-col items-center justify-center gap-1.5 rounded-lg border border-dashed border-hairline text-tertiary transition-colors duration-fast hover:border-hairline-hover hover:text-secondary"
+            className="flex min-h-[8.5rem] flex-col items-center justify-center gap-1.5 border border-dashed border-hairline-strong text-secondary transition-colors duration-fast hover:bg-primary hover:text-canvas"
           >
             <Plus size={18} strokeWidth={1.5} />
             <span className="text-ui">New module</span>
@@ -142,6 +149,7 @@ export function ProjectDashboard() {
 
       {/* recent changes — a quiet ledger, not a ticker */}
       <aside className="hidden w-80 shrink-0 flex-col border-l border-hairline lg:flex">
+        <RoomRules projectId={projectId} />
         <div className="flex h-10 shrink-0 items-center gap-2 border-b border-hairline px-4">
           <span className="h-1.5 w-1.5 rounded-full bg-ok" aria-hidden />
           <span className="text-small font-medium text-tertiary">Recent changes</span>
@@ -151,7 +159,7 @@ export function ProjectDashboard() {
             <div className="px-4 py-10 text-center text-small text-tertiary">
               Commits will appear here as the agents work.
               <div className="mt-2">
-                <Link to={`/p/${projectId}/history`} className="text-lav-300 hover:text-lav-400">
+                <Link to={`/p/${projectId}/history`} className="text-signal-300 hover:text-signal-400">
                   Open version history →
                 </Link>
               </div>
@@ -187,24 +195,6 @@ export function ProjectDashboard() {
             void createModule()
           }}
         >
-          <div role="radiogroup" aria-label="Module icon" className="flex flex-wrap gap-1.5">
-            {EMOJI_CHOICES.map((e) => (
-              <button
-                key={e}
-                type="button"
-                role="radio"
-                aria-checked={moduleEmoji === e}
-                aria-label={`Icon ${e}`}
-                onClick={() => setModuleEmoji(e)}
-                className={cn(
-                  'flex h-9 w-9 items-center justify-center rounded border text-h4 transition-colors duration-micro',
-                  moduleEmoji === e ? 'border-lav-border bg-lav-fill' : 'border-hairline hover:border-hairline-hover',
-                )}
-              >
-                {e}
-              </button>
-            ))}
-          </div>
           <label className="block">
             <span className="mb-1 block text-small font-medium text-secondary">Name</span>
             <input
@@ -250,6 +240,7 @@ export function ProjectDashboard() {
 const STATUS_TONE = { idea: 'neutral', building: 'warn', stable: 'ok' } as const
 
 function ModuleCard({
+  unit,
   module,
   projectId,
   live,
@@ -258,6 +249,7 @@ function ModuleCard({
   watcherCount,
   now,
 }: {
+  unit: string
   module: ModuleDto
   projectId: string
   live: SessionSummary | null
@@ -273,8 +265,8 @@ function ModuleCard({
       data-testid={`module-card-${module.name}`}
       to={`/p/${projectId}/m/${module.id}`}
       className={cn(
-        'group relative flex min-h-[8.5rem] flex-col overflow-hidden rounded-lg border bg-surface p-5 text-left transition-colors duration-fast ease-standard',
-        live ? 'border-lav-border shadow-live' : 'border-hairline hover:border-hairline-hover hover:bg-raised',
+        'group relative flex min-h-[8.5rem] flex-col overflow-hidden border bg-surface p-5 text-left transition-[background-color,box-shadow,transform] duration-fast ease-standard hover:-translate-x-0.5 hover:-translate-y-0.5 hover:shadow-[4px_4px_0_0_var(--text-primary)] motion-reduce:hover:translate-x-0 motion-reduce:hover:translate-y-0',
+        live ? 'border-signal-500 shadow-live' : 'border-hairline-strong',
       )}
     >
       {/* miniature thread along the inside-left edge — live cards only */}
@@ -285,9 +277,7 @@ function ModuleCard({
         </svg>
       )}
       <div className="flex items-start gap-3 pl-1">
-        <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded border border-hairline bg-inset text-ui">
-          {module.emoji}
-        </span>
+        <span className="tnum telemetry flex h-6 shrink-0 items-center bg-primary px-1.5 font-bold text-canvas">{unit}</span>
         <div className="min-w-0 flex-1">
           <h2 className="truncate text-h4 text-primary">{module.name}</h2>
           <p className="mt-0.5 line-clamp-1 text-small text-tertiary">{module.description}</p>

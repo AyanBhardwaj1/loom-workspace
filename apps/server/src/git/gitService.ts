@@ -64,6 +64,50 @@ export class GitService {
     return git
   }
 
+  /**
+   * Every file at a ref, as path → content. Binary files are represented by a
+   * NUL-prefixed marker with their blob sha (enough to compare, never merged).
+   */
+  async readTree(ref: string): Promise<Map<string, string>> {
+    const { stdout } = await this.run(['ls-tree', '-r', '-z', ref])
+    const entries = String(stdout)
+      .split('\0')
+      .filter(Boolean)
+      .map((e) => {
+        const tab = e.indexOf('\t')
+        const [, type, sha] = e.slice(0, tab).split(' ')
+        return { type, sha: sha!, path: e.slice(tab + 1) }
+      })
+      .filter((e) => e.type === 'blob')
+    const out = new Map<string, string>()
+    if (entries.length === 0) return out
+    const res = await execa('git', [...BASE_ARGS, 'cat-file', '--batch'], {
+      cwd: this.repoPath,
+      input: entries.map((e) => e.sha).join('\n') + '\n',
+      encoding: 'buffer',
+    })
+    const buf = Buffer.from(res.stdout as Uint8Array)
+    let off = 0
+    for (const e of entries) {
+      const nl = buf.indexOf(0x0a, off)
+      const header = buf.subarray(off, nl).toString('utf8')
+      const size = Number(header.split(' ')[2])
+      const body = buf.subarray(nl + 1, nl + 1 + size)
+      off = nl + 1 + size + 1
+      out.set(e.path, body.subarray(0, 8000).includes(0) ? `\u0000bin:${e.sha}` : body.toString('utf8'))
+    }
+    return out
+  }
+
+  /** nearest common ancestor of two refs (null when unrelated) */
+  async mergeBase(a: string, b: string): Promise<string | null> {
+    const res = await this.run(['merge-base', a, b], { reject: false })
+    return res.exitCode === 0 ? String(res.stdout).trim() || null : null
+  }
+
+  /** the checkout already lives on a persistent disk — nothing to rebuild */
+  async ensureCheckout(_dir: string): Promise<void> {}
+
   async currentSha(ref = 'HEAD', cwd?: string): Promise<string> {
     const { stdout } = await this.run(['rev-parse', ref], { cwd })
     return String(stdout).trim()

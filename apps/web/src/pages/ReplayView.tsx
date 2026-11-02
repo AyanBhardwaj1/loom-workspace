@@ -146,7 +146,7 @@ export function ReplayView() {
   return (
     <div className="flex h-full flex-col">
       <header className="flex h-12 shrink-0 items-center gap-3 border-b border-hairline px-4">
-        <Link to="/" className="shrink-0 text-primary transition-colors duration-micro hover:text-lav-300" aria-label="Home">
+        <Link to="/" className="shrink-0 text-primary transition-colors duration-micro hover:text-signal-300" aria-label="Home">
           <Wordmark height={16} />
         </Link>
         <Pill tone="accent">Replay</Pill>
@@ -191,7 +191,7 @@ export function ReplayView() {
               onClick={() => (playing ? setPlaying(false) : play())}
               title={playing ? 'Pause (space)' : 'Play (space)'}
               aria-label={playing ? 'Pause' : 'Play'}
-              className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-lav-500 text-on-accent transition-colors duration-micro hover:bg-lav-400"
+              className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-signal-500 text-on-accent transition-colors duration-micro hover:bg-signal-400"
             >
               {playing ? <Pause size={15} strokeWidth={2} aria-hidden /> : <Play size={15} strokeWidth={2} className="ml-0.5" aria-hidden />}
             </button>
@@ -203,7 +203,7 @@ export function ReplayView() {
             <div className="relative order-first h-8 min-w-0 basis-full sm:order-none sm:mx-2 sm:flex-1 sm:basis-auto">
               <div className="absolute inset-x-0 top-1/2 h-[2px] -translate-y-1/2 rounded-full bg-hairline-strong">
                 <div
-                  className="h-full origin-left rounded-full bg-lav-500 transition-transform duration-micro ease-standard"
+                  className="h-full origin-left rounded-full bg-signal-500 transition-transform duration-micro ease-standard"
                   style={{ transform: `scaleX(${total > 0 ? position / total : 0})` }}
                 />
               </div>
@@ -213,7 +213,7 @@ export function ReplayView() {
                     className="absolute top-1/2 h-[8px] w-[2px] -translate-x-1/2 -translate-y-1/2 rounded-full"
                     style={{
                       left: `${total > 0 ? (m.index / total) * 100 : 0}%`,
-                      background: m.index <= position ? 'var(--lav-300)' : 'var(--thread-node)',
+                      background: m.index <= position ? 'var(--signal-300)' : 'var(--thread-node)',
                     }}
                   />
                 </Tooltip>

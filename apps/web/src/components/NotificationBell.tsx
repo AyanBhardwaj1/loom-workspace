@@ -55,7 +55,7 @@ export function NotificationBell() {
           className="relative flex h-7 w-7 shrink-0 items-center justify-center rounded text-secondary transition-colors duration-micro hover:bg-raised hover:text-primary"
         >
           <Bell size={16} strokeWidth={1.5} aria-hidden />
-          {unread && <span aria-hidden className="absolute right-1 top-1 h-1.5 w-1.5 rounded-full bg-lav-500" />}
+          {unread && <span aria-hidden className="absolute right-1 top-1 h-1.5 w-1.5 rounded-full bg-signal-500" />}
         </button>
       </PopoverTrigger>
       <PopoverContent align="end" className="w-80 p-0">
@@ -83,7 +83,7 @@ export function NotificationBell() {
               >
                 <span
                   aria-hidden
-                  className={cn('h-1.5 w-1.5 shrink-0 rounded-full', n.readAt ? 'bg-hairline-strong' : 'bg-lav-500')}
+                  className={cn('h-1.5 w-1.5 shrink-0 rounded-full', n.readAt ? 'bg-hairline-strong' : 'bg-signal-500')}
                 />
                 <span className="min-w-0 flex-1 truncate text-small text-primary">{n.text}</span>
                 <span className="tnum shrink-0 font-mono text-small text-tertiary">{timeAgo(n.createdAt, now)}</span>

@@ -12,6 +12,8 @@ export type BusHandler<T = unknown> = (message: T) => void
 export interface EventBus {
   publish(topic: string, message: unknown): void
   subscribe(topic: string, handler: BusHandler): () => void
+  /** buses that write asynchronously (the serverless outbox) resolve once everything is written */
+  flush?(): Promise<void>
 }
 
 export const sessionTopic = (sessionId: string) => `session:${sessionId}`

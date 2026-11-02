@@ -1,14 +1,14 @@
 import { useState } from 'react'
-import { Eye, GitFork, History } from 'lucide-react'
 import { BRAND } from '@loom/shared'
 import { Avatar, Button, SectionLabel, cn } from '../components/primitives'
 import { Wordmark } from '../components/Wordmark'
 import { useAuth } from '../state/auth'
 
 const POINTS = [
-  { icon: Eye, title: 'Watch it work', body: 'Every prompt, thought, edit and commit streams to your whole team as it happens.' },
-  { icon: GitFork, title: 'Fork any moment', body: 'Branch from any point in a session and keep going without touching the original.' },
-  { icon: History, title: 'History in plain English', body: 'Each commit is explained for humans, then merged into main with one click.' },
+  { title: 'Watch it work', body: 'Every prompt, thought, edit and commit streams to the whole team as it happens.' },
+  { title: 'Test it together', body: 'See each other’s cursors, clicks and errors in the live product — and follow anyone’s screen.' },
+  { title: 'Fork any moment', body: 'Branch from any point in a session and keep going without touching the original.' },
+  { title: 'Checks on every commit', body: 'The agent tests its own work like a user would. Everyone sees pass or fail.' },
 ]
 
 /**
@@ -41,32 +41,31 @@ export function Login() {
 
   return (
     <main id="main" className="min-h-full overflow-y-auto">
-      <div className="mx-auto grid min-h-full w-full max-w-5xl items-center gap-10 px-4 py-10 sm:px-8 lg:grid-cols-[minmax(0,1fr)_400px] lg:gap-16">
-        <section aria-labelledby="login-title">
-          <Wordmark height={30} className="text-primary" title={BRAND} />
-          <h1 id="login-title" className="mt-6 text-balance text-display text-primary lg:text-[32px] lg:leading-[40px]">
-            Build software with an AI agent — together, live.
+      <div className="mx-auto grid min-h-full w-full max-w-[1280px] gap-10 px-4 py-8 sm:px-8 lg:grid-cols-[minmax(0,1fr)_400px] lg:gap-14 lg:py-12">
+        <section aria-labelledby="login-title" className="flex flex-col">
+          <div className="flex items-center justify-between border-b-2 border-hairline-strong pb-3">
+            <Wordmark height={26} className="text-primary" title={BRAND} />
+            <span className="telemetry text-tertiary">Multiplayer AI development</span>
+          </div>
+          <h1 id="login-title" className="font-display mt-8 text-balance text-[clamp(2.75rem,7vw,6.5rem)] leading-[0.88] text-primary">
+            Build with an AI agent. <span className="text-signal-500">Together.</span> Live.
           </h1>
-          <p className="mt-3 max-w-[52ch] text-body text-secondary">
-            One person drives the agent. The whole team watches it think, suggests the next step, and forks to try their own
-            idea.
+          <p className="mt-6 max-w-[52ch] text-body text-secondary">
+            One person drives the agent. The whole team watches it think, tests what it builds, suggests the next step, and forks to
+            try their own idea.
           </p>
-          <ul className="mt-8 hidden space-y-5 lg:block">
-            {POINTS.map(({ icon: Icon, title, body }) => (
-              <li key={title} className="flex gap-3">
-                <span className="mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded border border-hairline bg-surface text-lav-300">
-                  <Icon size={14} strokeWidth={1.5} aria-hidden />
-                </span>
-                <span>
-                  <span className="block text-ui font-medium text-primary">{title}</span>
-                  <span className="block max-w-[46ch] text-ui text-tertiary">{body}</span>
-                </span>
+          <ol className="mt-10 hidden grid-cols-2 border-l border-t border-hairline-strong lg:grid">
+            {POINTS.map(({ title, body }, i) => (
+              <li key={title} className="border-b border-r border-hairline-strong p-4">
+                <span className="tnum telemetry text-signal-300">{String(i + 1).padStart(2, '0')}</span>
+                <span className="mt-2 block text-h4 text-primary">{title}</span>
+                <span className="mt-1 block max-w-[40ch] text-ui text-secondary">{body}</span>
               </li>
             ))}
-          </ul>
+          </ol>
         </section>
 
-        <div className="rounded-lg border border-hairline bg-surface">
+        <div className="self-start border-2 border-hairline-strong bg-surface lg:mt-[3.25rem]">
           {devMode && devUsers.length > 0 && (
             <div className="p-2">
               <SectionLabel as="h2" className="px-2 pb-1.5 pt-1">
@@ -128,7 +127,7 @@ export function Login() {
                 autoComplete="email"
                 spellCheck={false}
                 inputMode="email"
-                placeholder="you@company.com"
+                placeholder="you@company.com…"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 required

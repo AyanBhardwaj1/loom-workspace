@@ -80,7 +80,7 @@ export function SpectatorSidebar({
         {selected && (
           <div className="relative" title={`${selected.driverName} is driving`}>
             <Avatar name={selected.driverName} color={selected.driverAvatarColor} size="md" />
-            <span className="absolute -right-0.5 -top-0.5 h-2 w-2 rounded-full bg-lav-500 ring-2 ring-surface" aria-hidden />
+            <span className="absolute -right-0.5 -top-0.5 h-2 w-2 rounded-full bg-signal-500 ring-2 ring-surface" aria-hidden />
           </div>
         )}
       </div>
@@ -153,7 +153,7 @@ export function SpectatorSidebar({
               thinkingText={stream.thinkingText}
               agentStatus={stream.agentStatus}
               driverName={selected?.driverName ?? 'Driver'}
-              driverColor={selected?.driverAvatarColor ?? 'var(--lav-500)'}
+              driverColor={selected?.driverAvatarColor ?? 'var(--signal-500)'}
               compact
               onFork={(eventId) => void fork(eventId)}
               emptyHint="Waiting for activity…"

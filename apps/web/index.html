@@ -1,16 +1,16 @@
 <!doctype html>
-<html lang="en" class="dark">
+<html lang="en">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <!-- static fallback title; main.tsx overrides it from the BRAND constant on load. See NAMING.md -->
     <title>Loom — multiplayer AI coding sessions</title>
-    <meta name="theme-color" content="#0B0B0E" />
-    <!-- the woven oo mark; swapped to the lavender variant while a session streams (see lib/brand.ts) -->
+    <meta name="theme-color" content="#F4F4F0" />
+    <!-- the unit mark; swapped to the signal-red variant while a session streams (see lib/brand.ts) -->
     <link rel="icon" id="favicon" type="image/svg+xml" href="/favicon.svg" />
-    <!-- self-hosted Geist, preloaded so the metric-tuned fallback never flashes -->
-    <link rel="preload" href="/fonts/geist-latin.woff2" as="font" type="font/woff2" crossorigin />
-    <link rel="preload" href="/fonts/geist-mono-latin.woff2" as="font" type="font/woff2" crossorigin />
+    <!-- self-hosted Archivo + JetBrains Mono, preloaded so the fallback never flashes -->
+    <link rel="preload" href="/fonts/archivo-latin.woff2" as="font" type="font/woff2" crossorigin />
+    <link rel="preload" href="/fonts/jetbrains-mono-latin.woff2" as="font" type="font/woff2" crossorigin />
   </head>
   <body>
     <div id="root"></div>

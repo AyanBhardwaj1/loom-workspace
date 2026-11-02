@@ -173,3 +173,121 @@ export const appSettings = sqliteTable('app_settings', {
   key: text('key').primaryKey(),
   value: text('value').notNull(),
 })
+
+/* ----------------------------------------------------------------------------
+ * Serverless platform (LOOM_PLATFORM=serverless, e.g. Vercel): no persistent
+ * disk, no long-lived sockets, many instances. Files + history live in the DB
+ * (a tiny content-addressed git), realtime rides an outbox, and cross-request
+ * coordination (turn locks, stop requests, handoffs) lives in a TTL'd kv.
+ * ------------------------------------------------------------------------- */
+
+/** content-addressed file contents (sha1 of the content) */
+export const vgitBlobs = sqliteTable('vgit_blobs', {
+  hash: text('hash').primaryKey(),
+  content: text('content').notNull(),
+})
+
+/** a snapshot: tree = JSON {path: blobHash}; parents = JSON [sha] */
+export const vgitCommits = sqliteTable(
+  'vgit_commits',
+  {
+    sha: text('sha').primaryKey(),
+    repo: text('repo').notNull(),
+    tree: text('tree').notNull(),
+    parents: text('parents').notNull(),
+    message: text('message').notNull(),
+    authorName: text('author_name').notNull(),
+    authorEmail: text('author_email').notNull(),
+    createdAt: text('created_at').notNull(),
+  },
+  (t) => ({ repoIdx: index('vgit_commits_repo_idx').on(t.repo) }),
+)
+
+export const vgitRefs = sqliteTable(
+  'vgit_refs',
+  {
+    repo: text('repo').notNull(),
+    name: text('name').notNull(),
+    sha: text('sha').notNull(),
+  },
+  (t) => ({ pk: primaryKey({ columns: [t.repo, t.name] }) }),
+)
+
+/** which branch a checkout path holds (any instance can rebuild it in /tmp) */
+export const vgitWorktrees = sqliteTable('vgit_worktrees', {
+  path: text('path').primaryKey(),
+  repo: text('repo').notNull(),
+  branch: text('branch').notNull(),
+})
+
+/** realtime outbox: every bus message, read by long-polling clients */
+export const rtOutbox = sqliteTable(
+  'rt_outbox',
+  {
+    id: integer('id').primaryKey({ autoIncrement: true }),
+    topic: text('topic').notNull(),
+    body: text('body').notNull(),
+    createdAt: text('created_at').notNull(),
+  },
+  (t) => ({ createdIdx: index('rt_outbox_created_idx').on(t.createdAt) }),
+)
+
+/** one row per open browser tab: its subscriptions + presence heartbeat */
+export const rtClients = sqliteTable(
+  'rt_clients',
+  {
+    clientId: text('client_id').primaryKey(),
+    userId: text('user_id').notNull(),
+    projectIds: text('project_ids').notNull(),
+    sessionIds: text('session_ids').notNull(),
+    viewing: text('viewing'),
+    viewingProject: text('viewing_project'),
+    readingEventId: text('reading_event_id'),
+    lastSeen: text('last_seen').notNull(),
+  },
+  (t) => ({ seenIdx: index('rt_clients_seen_idx').on(t.lastSeen) }),
+)
+
+/** short-lived coordination keys (turn leases, stop requests, wheel offers) */
+export const rtKv = sqliteTable('rt_kv', {
+  key: text('key').primaryKey(),
+  value: text('value').notNull(),
+  expiresAt: text('expires_at').notNull(),
+})
+
+/* ----------------------------------------------------------------------------
+ * External agents (Claude Code / Codex / Cursor on a laptop) join the room
+ * through the MCP endpoint: a personal token, and the work they announce —
+ * file paths and symbol names only, never contents.
+ * ------------------------------------------------------------------------- */
+export const agentTokens = sqliteTable(
+  'agent_tokens',
+  {
+    id: text('id').primaryKey(),
+    userId: text('user_id')
+      .notNull()
+      .references(() => users.id),
+    name: text('name').notNull(),
+    tokenHash: text('token_hash').notNull(),
+    createdAt: text('created_at').notNull(),
+    lastUsedAt: text('last_used_at'),
+  },
+  (t) => ({ hashIdx: uniqueIndex('agent_tokens_hash_idx').on(t.tokenHash) }),
+)
+
+export const externalWork = sqliteTable(
+  'external_work',
+  {
+    id: text('id').primaryKey(),
+    userId: text('user_id').notNull(),
+    projectId: text('project_id').notNull(),
+    agent: text('agent').notNull(),
+    branch: text('branch').notNull(),
+    /** JSON [{path, symbols}] */
+    files: text('files').notNull(),
+    summary: text('summary').notNull(),
+    updatedAt: text('updated_at').notNull(),
+    expiresAt: text('expires_at').notNull(),
+  },
+  (t) => ({ projectIdx: index('external_work_project_idx').on(t.projectId) }),
+)

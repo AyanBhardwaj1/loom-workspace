@@ -1,6 +1,6 @@
 /**
  * Streaming presence in the browser chrome: while any session the user has
- * open is streaming, the favicon swaps to its lavender variant and the tab
+ * open is streaming, the favicon swaps to its signal-red variant and the tab
  * title gains a "● " prefix. Small, noticeable, honest.
  */
 let streaming = false

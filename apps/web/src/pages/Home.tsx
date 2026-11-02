@@ -77,7 +77,7 @@ export function Home() {
                   {plural(projects.length, 'project')}
                   <span aria-hidden className="text-tertiary">·</span>
                   {liveSessions > 0 ? (
-                    <span className="inline-flex items-center gap-1.5 text-lav-300">
+                    <span className="inline-flex items-center gap-1.5 text-signal-300">
                       <StatusDot tone="accent" />
                       {plural(liveSessions, 'live session')} right now
                     </span>
@@ -224,7 +224,7 @@ function ProjectCard({ project: p, now }: { project: ProjectSummary; now: number
       to={`/p/${p.id}`}
       className={cn(
         'group flex min-h-[10.5rem] flex-col rounded-lg border bg-surface p-5 transition-colors duration-fast ease-standard',
-        live ? 'border-lav-border shadow-live' : 'border-hairline hover:border-hairline-hover hover:bg-raised',
+        live ? 'border-signal-border shadow-live' : 'border-hairline hover:border-hairline-hover hover:bg-raised',
       )}
     >
       <div className="flex items-start justify-between gap-3">
@@ -233,7 +233,7 @@ function ProjectCard({ project: p, now }: { project: ProjectSummary; now: number
       </div>
       <p className="mt-1 line-clamp-2 text-ui text-secondary">{p.description || 'No description yet.'}</p>
       {live && (
-        <p className="tnum mt-2 text-small text-lav-300">
+        <p className="tnum mt-2 text-small text-signal-300">
           {plural(p.activeSessionCount, 'session')} being built right now
         </p>
       )}

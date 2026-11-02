@@ -23,13 +23,13 @@ export default {
       tertiary: 'var(--text-tertiary)',
       disabled: 'var(--text-disabled)',
       'on-accent': 'var(--text-on-accent)',
-      lav: {
-        300: 'var(--lav-300)',
-        400: 'var(--lav-400)',
-        500: 'var(--lav-500)',
-        600: 'var(--lav-600)',
-        fill: 'var(--lav-fill)',
-        border: 'var(--lav-border)',
+      signal: {
+        300: 'var(--signal-300)',
+        400: 'var(--signal-400)',
+        500: 'var(--signal-500)',
+        600: 'var(--signal-600)',
+        fill: 'var(--signal-fill)',
+        border: 'var(--signal-border)',
       },
       ok: { DEFAULT: 'var(--ok)', fill: 'var(--ok-fill)', border: 'var(--ok-border)' },
       danger: { DEFAULT: 'var(--danger)', fill: 'var(--danger-fill)', border: 'var(--danger-border)' },
@@ -41,19 +41,21 @@ export default {
         strong: 'var(--hairline-strong)',
       },
     },
+    // Swiss industrial: every corner is 90°. The scale exists so call sites
+    // stay semantic; all of it resolves to zero.
     borderRadius: {
       none: '0',
-      sm: '4px', // kbd caps only
-      DEFAULT: '6px', // controls, chips, inputs, segments
-      lg: '8px', // cards, bubbles, composer, diff cards
-      xl: '10px', // modals + command palette only
-      full: '999px', // pills, avatars
+      sm: '0',
+      DEFAULT: '0',
+      lg: '0',
+      xl: '0',
+      full: '0',
     },
     boxShadow: {
       none: 'none',
       modal: 'var(--shadow-modal)',
       dropdown: 'var(--shadow-dropdown)',
-      live: 'var(--glow-live)', // the app's single glow
+      live: 'var(--glow-live)', // live = a red frame, not a glow
     },
     zIndex: {
       0: '0',
@@ -65,19 +67,19 @@ export default {
       toast: '60',
     },
     fontFamily: {
-      sans: ['Geist Variable', 'Geist Fallback', 'ui-sans-serif', 'system-ui', 'sans-serif'],
-      mono: ['Geist Mono Variable', 'Geist Mono Fallback', 'ui-monospace', 'SFMono-Regular', 'Menlo', 'monospace'],
+      sans: ['Archivo Variable', 'Arial Narrow', 'Helvetica Neue', 'Arial', 'sans-serif'],
+      mono: ['JetBrains Mono Variable', 'ui-monospace', 'SFMono-Regular', 'Menlo', 'monospace'],
     },
     fontSize: {
       // role-named scale — size/leading/tracking travel together
-      micro: ['11px', { lineHeight: '16px', letterSpacing: '0.08em', fontWeight: '500' }],
-      small: ['12px', { lineHeight: '18px' }],
-      ui: ['13px', { lineHeight: '20px' }],
-      body: ['14px', { lineHeight: '23px' }],
-      h4: ['16px', { lineHeight: '24px', letterSpacing: '-0.01em', fontWeight: '500' }],
-      h3: ['18px', { lineHeight: '26px', letterSpacing: '-0.014em', fontWeight: '600' }],
-      h2: ['20px', { lineHeight: '28px', letterSpacing: '-0.016em', fontWeight: '600' }],
-      display: ['24px', { lineHeight: '32px', letterSpacing: '-0.02em', fontWeight: '600' }],
+      micro: ['10.5px', { lineHeight: '14px', letterSpacing: '0.08em', fontWeight: '500' }],
+      small: ['12px', { lineHeight: '17px' }],
+      ui: ['13.5px', { lineHeight: '20px' }],
+      body: ['15px', { lineHeight: '24px' }],
+      h4: ['17px', { lineHeight: '22px', letterSpacing: '-0.01em', fontWeight: '700' }],
+      h3: ['21px', { lineHeight: '24px', letterSpacing: '-0.015em', fontWeight: '800' }],
+      h2: ['28px', { lineHeight: '28px', letterSpacing: '-0.02em', fontWeight: '850' }],
+      display: ['clamp(2.5rem, 5.2vw, 4.75rem)', { lineHeight: '0.9', letterSpacing: '-0.035em', fontWeight: '900' }],
       // data sizes (mono contexts)
       'code-sm': ['12px', { lineHeight: '18px' }],
       code: ['13px', { lineHeight: '20px' }],

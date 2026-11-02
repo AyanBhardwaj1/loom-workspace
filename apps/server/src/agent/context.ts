@@ -39,6 +39,23 @@ export function foldTranscript(prev: TranscriptEntry[], events: SessionEvent[]):
       case 'commit':
         entries.push({ role: 'tool', text: `✓ committed: ${cap(e.payload.technicalSummary, 200)}` })
         break
+      case 'steer':
+        // what the driver said mid-run is part of the conversation
+        entries.push({ role: 'user', text: `(while you were working) ${cap(e.payload.text, 1000)}` })
+        break
+      case 'test_plan':
+        entries.push({
+          role: 'tool',
+          text: `proposed tests: ${e.payload.cases.map((c) => `[${c.id}] ${cap(c.action, 80)} → ${cap(c.expect, 80)}`).join('; ')}`,
+        })
+        break
+      case 'test_verdict':
+        // teammates' evidence from the live preview — the agent acts on failures
+        entries.push({
+          role: 'user',
+          text: `${e.payload.byName} tested [${e.payload.caseId}]: ${e.payload.verdict.toUpperCase()}${e.payload.note ? ` — ${cap(e.payload.note, 300)}` : ''}`,
+        })
+        break
       default:
         break
     }
@@ -89,6 +106,11 @@ How to work:
 - Make small, coherent increments; leave the project runnable at the end of every turn.
 - Prefer plain HTML/CSS/JS or small Node apps, so the session preview shows the result immediately.
 - Use search_files to find code, read a file before editing it, edit_file for targeted changes (old_string must match exactly one place), and write_file for new files or full rewrites.
+- For multi-step work, share your plan with update_plan before you start and update it as steps finish — teammates steer from it.
+- Verify your work as a user would before you finish: call run_checks, read what it reports, and fix failures. Teammates are also testing the live preview and see the same results.
+- After building or changing something a user can see, call propose_tests with acceptance tests derived from the request. Teammates run them in the live preview; when one comes back FAIL, fixing it comes first.
+- Deleting files, running commands and editing protected files may wait for a teammate's approval. If an action is denied or lapses, don't retry it — continue without it and say what you couldn't do. If the project is frozen, make no changes.
+- The driver may steer you mid-run; it arrives inside a tool result marked STEERING. Acknowledge it in one sentence (how you read it, what changes), then follow it. Never undo work the team asked for.
 - Before your first tool call, say in one sentence what you're about to do. When you finish, recap what changed and anything ${input.driverName} should check.`
 }
 
@@ -97,8 +119,9 @@ How to work:
  * stable system prompt so the system block stays byte-identical (cacheable)
  * for the whole session.
  */
-export function agentDynamicContext(ctx: Pick<AgentTurnContext, 'fileTree' | 'brief'>): string {
+export function agentDynamicContext(ctx: Pick<AgentTurnContext, 'fileTree' | 'brief' | 'coordination'>): string {
   const sections: string[] = []
+  if (ctx.coordination) sections.push(ctx.coordination)
   if (ctx.brief?.goal) sections.push(`Session goal (the request that started this session):\n${ctx.brief.goal}`)
   if (ctx.brief && ctx.brief.commits.length > 0) {
     sections.push(`Committed so far, oldest first:\n${ctx.brief.commits.map((c) => `- ${c}`).join('\n')}`)

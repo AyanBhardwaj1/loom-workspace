@@ -3,6 +3,7 @@ import { z } from 'zod'
 import type { SessionDetail, SessionDigest } from '@loom/shared'
 import type { Services } from '../services'
 import { makeRequireUser, parseBody } from './helpers'
+import { withLock } from '../realtime/coordination'
 
 function parseDigest(raw: string | null | undefined): SessionDigest | null {
   if (!raw) return null
@@ -142,6 +143,89 @@ export async function sessionRoutes(app: FastifyInstance, services: Services): P
       digest: parseDigest(session.digest),
     }
     return detail
+  })
+
+  // live checks: any member may run the shared smoke test; everyone watches it
+  app.post('/api/sessions/:id/checks', { preHandler: requireUser }, async (req, reply) => {
+    const { id } = req.params as { id: string }
+    const session = await sessions.getSession(id)
+    if (!session) return reply.code(404).send({ error: 'Session not found' })
+    if (!(await projects.isMember(session.projectId, req.currentUser.id))) {
+      return reply.code(403).send({ error: 'You are not a member of this project' })
+    }
+    const project = await projects.getProject(session.projectId)
+    if (project) await projects.gitFor(project).ensureCheckout(session.worktreePath)
+    const run = await services.orchestrator.runChecksFor(session.id, session.worktreePath, 'manual', req.currentUser.name)
+    return { run }
+  })
+
+  // a second member decides on a guarded agent action (never the driver who started the run)
+  app.post('/api/sessions/:id/approvals/:requestId', { preHandler: requireUser }, async (req, reply) => {
+    const { id, requestId } = req.params as { id: string; requestId: string }
+    const body = parseBody(z.object({ decision: z.enum(['approved', 'denied']) }), req.body, reply)
+    if (!body) return
+    const session = await sessions.getSession(id)
+    if (!session) return reply.code(404).send({ error: 'Session not found' })
+    if (!(await projects.isMember(session.projectId, req.currentUser.id))) {
+      return reply.code(403).send({ error: 'You are not a member of this project' })
+    }
+    return withLock(services.coord, `approval:${requestId}`, async () => {
+      const events = await sessions.getEvents(id, 0)
+      const request = events.find((e) => e.type === 'approval_request' && e.payload.requestId === requestId)
+      if (!request || request.type !== 'approval_request') return reply.code(404).send({ error: 'No such request' })
+      if (request.payload.driverUserId === req.currentUser.id) {
+        return reply.code(403).send({ error: 'You started this run — a teammate has to approve it' })
+      }
+      if (events.some((e) => e.type === 'approval_decision' && e.payload.requestId === requestId)) {
+        return reply.code(409).send({ error: 'Already decided' })
+      }
+      const event = await sessions.appendEvent(id, 'approval_decision', {
+        requestId,
+        decision: body.decision,
+        byUserId: req.currentUser.id,
+        byName: req.currentUser.name,
+      })
+      return { event }
+    })
+  })
+
+  // a teammate's verdict on one of the agent's proposed test cases (any member, the driver too)
+  app.post('/api/sessions/:id/tests', { preHandler: requireUser }, async (req, reply) => {
+    const { id } = req.params as { id: string }
+    const body = parseBody(
+      z.object({ planId: z.string().max(64), caseId: z.string().max(16), verdict: z.enum(['pass', 'fail']), note: z.string().trim().max(300).optional() }),
+      req.body,
+      reply,
+    )
+    if (!body) return
+    const session = await sessions.getSession(id)
+    if (!session) return reply.code(404).send({ error: 'Session not found' })
+    if (!(await projects.isMember(session.projectId, req.currentUser.id))) {
+      return reply.code(403).send({ error: 'You are not a member of this project' })
+    }
+    if (session.status === 'ended') return reply.code(409).send({ error: 'This session has ended' })
+    const events = await sessions.getEvents(id, 0)
+    const plan = events.find((e) => e.type === 'test_plan' && e.payload.planId === body.planId)
+    if (!plan || plan.type !== 'test_plan' || !plan.payload.cases.some((c) => c.id === body.caseId)) {
+      return reply.code(404).send({ error: 'No such test case' })
+    }
+    // an unchanged repeat is a no-op, so double-clicks don't spam the log
+    const mine = events.filter(
+      (e) => e.type === 'test_verdict' && e.payload.planId === body.planId && e.payload.caseId === body.caseId && e.payload.byUserId === req.currentUser.id,
+    )
+    const last = mine[mine.length - 1]
+    if (last && last.type === 'test_verdict' && last.payload.verdict === body.verdict && (last.payload.note ?? '') === (body.note ?? '')) {
+      return { event: last }
+    }
+    const event = await sessions.appendEvent(id, 'test_verdict', {
+      planId: body.planId,
+      caseId: body.caseId,
+      verdict: body.verdict,
+      ...(body.note ? { note: body.note } : {}),
+      byUserId: req.currentUser.id,
+      byName: req.currentUser.name,
+    })
+    return { event }
   })
 
   app.post('/api/sessions/:id/end', { preHandler: requireUser }, async (req, reply) => {

@@ -29,6 +29,11 @@ export interface AgentToolExecution {
   detail?: string
   /** Raw content fed back to the model (file contents, command output). */
   content?: string
+  /** Structured outcome the orchestrator turns into its own event (check run, plan). */
+  artifact?:
+    | { kind: 'check_run'; status: 'passed' | 'warned' | 'failed'; results: Array<{ id: string; label: string; status: 'pass' | 'warn' | 'fail'; detail?: string }>; durationMs: number }
+    | { kind: 'plan'; steps: Array<{ text: string; status: 'todo' | 'doing' | 'done' }> }
+    | { kind: 'test_plan'; cases: Array<{ action: string; expect: string }> }
 }
 
 export interface TranscriptEntry {
@@ -56,6 +61,8 @@ export interface AgentTurnContext {
   transcript: TranscriptEntry[]
   /** Goal + commit ledger; optional so hand-built contexts (tests) can omit it. */
   brief?: SessionBrief
+  /** What teammates' agents are changing right now (the coordination radar), in plain lines. */
+  coordination?: string
   /** Relative paths of files currently in the session worktree. */
   fileTree: string[]
   /** Number of assistant messages before this turn (playbook cursor for the mock). */
@@ -89,5 +96,8 @@ export const AGENT_TOOL_NAMES = [
   'edit_file',
   'delete_file',
   'run_command',
+  'run_checks',
+  'update_plan',
+  'propose_tests',
 ] as const
 export type AgentToolName = (typeof AGENT_TOOL_NAMES)[number]

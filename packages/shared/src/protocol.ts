@@ -21,6 +21,8 @@ export const clientMessageSchema = z.discriminatedUnion('t', [
   z.object({ t: z.literal('user_message'), sessionId: z.string(), text: z.string().min(1).max(20000) }),
   /** Spectator proposes a next step. Any project member except the driver. */
   z.object({ t: z.literal('suggest'), sessionId: z.string(), text: z.string().min(1).max(2000) }),
+  /** Driver redirects the agent mid-run; lands at the next tool-call boundary. */
+  z.object({ t: z.literal('steer'), sessionId: z.string(), text: z.string().min(1).max(2000) }),
   /** Driver accepts (→ runs a turn credited to the suggester) or dismisses. */
   z.object({
     t: z.literal('resolve_suggestion'),
@@ -56,6 +58,26 @@ export const clientMessageSchema = z.discriminatedUnion('t', [
    * anchors to an event row; null = the live edge. Never persisted.
    */
   z.object({ t: z.literal('react'), sessionId: z.string(), emoji: z.string().min(1).max(8), atSeq: z.number().int().nullable() }),
+  /**
+   * Live co-testing: pointer, clicks, scroll, page and runtime errors from a
+   * viewer's preview iframe (relayed by the parent page). Broadcast-only.
+   */
+  z.object({
+    t: z.literal('preview_presence'),
+    sessionId: z.string(),
+    kind: z.enum(['move', 'click', 'scroll', 'nav', 'error', 'leave']),
+    /** document coordinates (px) — receivers map them into their own scroll */
+    x: z.number().min(0).max(1_000_000).optional(),
+    y: z.number().min(0).max(1_000_000).optional(),
+    /** viewport size, for scroll-follow */
+    vw: z.number().min(0).max(100_000).optional(),
+    vh: z.number().min(0).max(100_000).optional(),
+    path: z.string().max(300).optional(),
+    /** what was clicked ("button · Join waitlist") — never what anyone typed */
+    label: z.string().max(120).optional(),
+    /** a runtime error the viewer's browser hit in the preview */
+    message: z.string().max(300).optional(),
+  }),
   /** F9 — driver offers the wheel to a watching member. */
   z.object({ t: z.literal('handoff_offer'), sessionId: z.string(), toUserId: z.string() }),
   /** F9 — the offered member accepts or declines. */
@@ -155,6 +177,8 @@ export const projectUpdateSchema = z.discriminatedUnion('kind', [
     ok: z.boolean(),
     message: z.string(),
   }),
+  /** the project's freeze switched — every viewer sees who froze it */
+  z.object({ kind: z.literal('policy'), frozen: z.boolean(), by: z.string() }),
 ])
 export type ProjectUpdate = z.infer<typeof projectUpdateSchema>
 
@@ -190,6 +214,26 @@ export const serverMessageSchema = z.discriminatedUnion('t', [
     atSeq: z.number().int().nullable(),
     byName: z.string(),
     byColor: z.string(),
+  }),
+  /** Live co-testing relay — identity stamped by the server, never by the page. */
+  z.object({
+    t: z.literal('preview_presence'),
+    sessionId: z.string(),
+    userId: z.string(),
+    name: z.string(),
+    color: z.string(),
+    kind: z.enum(['move', 'click', 'scroll', 'nav', 'error', 'leave']),
+    /** document coordinates (px) — receivers map them into their own scroll */
+    x: z.number().min(0).max(1_000_000).optional(),
+    y: z.number().min(0).max(1_000_000).optional(),
+    /** viewport size, for scroll-follow */
+    vw: z.number().min(0).max(100_000).optional(),
+    vh: z.number().min(0).max(100_000).optional(),
+    path: z.string().max(300).optional(),
+    /** what was clicked ("button · Join waitlist") — never what anyone typed */
+    label: z.string().max(120).optional(),
+    /** a runtime error the viewer's browser hit in the preview */
+    message: z.string().max(300).optional(),
   }),
   /** F13 — targeted: a fresh notification for this user. */
   z.object({ t: z.literal('notification'), notification: notificationSchema }),

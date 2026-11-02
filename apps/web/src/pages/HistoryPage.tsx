@@ -1,19 +1,21 @@
 import { ArrowLeft, ChevronDown, ChevronRight, FileText, GitMerge, MonitorPlay } from 'lucide-react'
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useId, useMemo, useRef, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { useSearchParams } from 'react-router-dom'
 import { clsx } from 'clsx'
-import type { BranchInfo, ChangeSummary, MergeResult } from '@loom/shared'
+import type { BranchInfo, ChangeSummary, MergeGate, MergeResult } from '@loom/shared'
 import { UnifiedDiffView } from '../components/EventRow'
 import { PaneBoundary } from '../components/PaneBoundary'
 import { PreviewPane } from '../components/PreviewPane'
-import { Modal } from '../components/overlay'
+import { Modal, Popover, PopoverContent, PopoverTrigger } from '../components/overlay'
 import { Avatar, Button, CardSkeleton, EmptyState, MonoChip, SegmentedControl, Spinner, cn } from '../components/primitives'
 import { api } from '../lib/api'
 import { momentMergeJoin } from '../lib/choreography'
 import { timeAgo, useNow } from '../lib/time'
 import { useMediaQuery } from '../lib/useMediaQuery'
 import { useProject } from './ProjectShell'
+import { usePreviewUrl } from '../state/usePreviewUrl'
+import { usePolicy } from '../state/usePolicy'
 
 type Lens = 'simple' | 'technical'
 
@@ -37,6 +39,7 @@ export function HistoryPage() {
       return next
     })
   const [mainPreview, setMainPreview] = useState(false)
+  const mainSrc = usePreviewUrl(mainPreview ? { main: projectId } : null)
 
   const changesQuery = useQuery({
     queryKey: ['changes', projectId],
@@ -140,7 +143,7 @@ export function HistoryPage() {
 
       <Modal open={mainPreview} onClose={() => setMainPreview(false)} title="Merged main — live preview" width={900}>
         <div className="h-[70vh] overflow-hidden rounded-lg border border-hairline">
-          <PreviewPane src={`/preview/main/${projectId}/`} reloadKey={changes.length} label="main branch" />
+          <PreviewPane src={mainSrc} openHref={`/preview/main/${projectId}/`} reloadKey={changes.length} label="main branch" />
         </div>
       </Modal>
     </div>
@@ -215,7 +218,7 @@ function BraidList({
             aria-pressed={isSelected}
             className={clsx(
               'absolute inset-x-0 flex items-center gap-3 pr-4 text-left transition-colors duration-micro',
-              isSelected ? 'bg-lav-fill' : 'hover:bg-raised',
+              isSelected ? 'bg-signal-fill' : 'hover:bg-raised',
               freshIds.has(c.id) && 'animate-highlight',
             )}
             style={{ top: i * ROW_H, height: ROW_H, paddingLeft: gutterW + 6 }}
@@ -228,7 +231,7 @@ function BraidList({
                 top: ROW_H / 2 - (onMain ? 3.5 : 2.5),
                 width: onMain ? 7 : 5,
                 height: onMain ? 7 : 5,
-                background: isSelected ? 'var(--lav-300)' : onMain ? 'var(--thread-branch-active)' : 'var(--thread-node)',
+                background: isSelected ? 'var(--signal-300)' : onMain ? 'var(--thread-branch-active)' : 'var(--thread-node)',
               }}
             />
             <Avatar name={c.authorName} color={c.authorAvatarColor} size="sm" />
@@ -269,7 +272,8 @@ function BranchesStrip({ projectId }: { projectId: string }) {
     refetchInterval: 20_000,
   })
 
-  const merge = async (branchName: string) => {
+  const { isOwner } = usePolicy(projectId)
+  const merge = async (branchName: string, overrideReason?: string) => {
     if (merging) return
     setMerging(branchName)
     setNote(null)
@@ -277,7 +281,10 @@ function BranchesStrip({ projectId }: { projectId: string }) {
       // M5 — the branch thread curves in and fuses with main
       const branchPath = document.querySelector<SVGPathElement>(`[data-lane="${CSS.escape(branchName)}"]`)
       const mainPath = document.querySelector<SVGPathElement>('[data-lane="main"]')
-      const mergePromise = api.post<MergeResult>(`/api/projects/${projectId}/merge`, { branchName })
+      const mergePromise = api.post<MergeResult>(`/api/projects/${projectId}/merge`, {
+        branchName,
+        ...(overrideReason ? { override: { reason: overrideReason } } : {}),
+      })
       if (branchPath && mainPath) {
         const d = branchPath.getAttribute('d') ?? ''
         const m = /M ([\d.]+) ([\d.]+) L [\d.]+ ([\d.]+)/.exec(d)
@@ -304,33 +311,107 @@ function BranchesStrip({ projectId }: { projectId: string }) {
 
   return (
     <div className="shrink-0 border-b border-hairline">
-      {branches.map((b) => (
-        <div key={b.branchName} className="flex h-10 items-center gap-2 border-b border-hairline px-4 last:border-b-0">
-          {b.driverName && <Avatar name={b.driverName} color={b.driverAvatarColor ?? 'var(--lav-500)'} size="xs" />}
-          <MonoChip className="min-w-0 shrink" title={b.branchName}>
-            {b.branchName.replace(/^session\//, '')}
-          </MonoChip>
-          <span className="tnum shrink-0 text-small text-tertiary">
-            {b.aheadOfMain} ahead{b.behindMain > 0 ? ` · ${b.behindMain} behind` : ''}
-          </span>
-          <Button
-            variant="outline"
-            size="sm"
-            className="ml-auto shrink-0"
-            onClick={() => void merge(b.branchName)}
-            disabled={merging !== null}
-          >
-            <GitMerge size={13} strokeWidth={1.5} />
-            {merging === b.branchName ? 'Merging…' : 'Merge into main'}
-          </Button>
-        </div>
-      ))}
+      {branches.map((b) => {
+        const gate = b.gate
+        const blocked = gate !== null && !gate.ok
+        return (
+          <div key={b.branchName} className="border-b border-hairline px-4 py-2 last:border-b-0">
+            <div className="flex min-h-7 items-center gap-2">
+              {b.driverName && <Avatar name={b.driverName} color={b.driverAvatarColor ?? 'var(--signal-500)'} size="xs" />}
+              <MonoChip className="min-w-0 shrink" title={b.branchName}>
+                {b.branchName.replace(/^session\//, '')}
+              </MonoChip>
+              <span className="tnum shrink-0 text-small text-tertiary">
+                {b.aheadOfMain} ahead{b.behindMain > 0 ? ` · ${b.behindMain} behind` : ''}
+              </span>
+              <div className="ml-auto flex shrink-0 items-center gap-1.5">
+                {blocked && isOwner && (
+                  <OverrideMerge disabled={merging !== null} onConfirm={(reason) => void merge(b.branchName, reason)} />
+                )}
+                <Button variant="outline" size="sm" onClick={() => void merge(b.branchName)} disabled={merging !== null || blocked}>
+                  <GitMerge size={13} strokeWidth={1.5} />
+                  {merging === b.branchName ? 'Merging…' : 'Merge into main'}
+                </Button>
+              </div>
+            </div>
+            {gate && gate.mode !== 'off' && <GateChecks gate={gate} />}
+          </div>
+        )
+      })}
       {note && (
         <div role="status" className={clsx('px-4 py-2 text-small', note.ok ? 'text-ok' : 'text-danger')}>
           {note.text}
         </div>
       )}
     </div>
+  )
+}
+
+/** the gate, rule by rule — the same verdict the server enforces */
+function GateChecks({ gate }: { gate: MergeGate }) {
+  const mark = { pass: { g: '✓', c: 'text-ok' }, fail: { g: '✕', c: gate.mode === 'enforce' ? 'text-danger' : 'text-warn' }, skip: { g: '–', c: 'text-tertiary' } }
+  return (
+    <ul className="mt-1.5 flex flex-wrap gap-x-3 gap-y-1" aria-label={gate.ok ? 'Ready for main' : 'Not verified for main yet'}>
+      {gate.checks.map((c) => (
+        <li key={c.id} className="flex items-baseline gap-1 text-small" title={c.detail}>
+          <span aria-hidden className={cn('font-mono font-bold', mark[c.status].c)}>
+            {mark[c.status].g}
+          </span>
+          <span className={c.status === 'fail' ? 'text-primary' : 'text-secondary'}>{c.label}</span>
+          <span className="sr-only">
+            — {c.status === 'pass' ? 'done' : c.status === 'skip' ? 'not needed' : 'missing'}: {c.detail}
+          </span>
+        </li>
+      ))}
+      {gate.mode === 'warn' && !gate.checks.every((c) => c.status !== 'fail') && (
+        <li className="telemetry text-warn">Warn mode — merging is allowed and history will say it was unverified</li>
+      )}
+    </ul>
+  )
+}
+
+/** owner-only: merge past the gate, with the reason written into history */
+function OverrideMerge({ disabled, onConfirm }: { disabled: boolean; onConfirm: (reason: string) => void }) {
+  const [open, setOpen] = useState(false)
+  const [reason, setReason] = useState('')
+  const fieldId = useId()
+  return (
+    <Popover open={open} onOpenChange={setOpen}>
+      <PopoverTrigger asChild>
+        <Button variant="ghost" size="sm" disabled={disabled}>
+          Override…
+        </Button>
+      </PopoverTrigger>
+      <PopoverContent align="end" className="w-80">
+        <form
+          onSubmit={(e) => {
+            e.preventDefault()
+            if (reason.trim().length < 4) return
+            setOpen(false)
+            onConfirm(reason.trim())
+            setReason('')
+          }}
+        >
+          <label htmlFor={fieldId} className="telemetry text-primary">
+            Why merge before it&rsquo;s verified?
+          </label>
+          <input
+            id={fieldId}
+            name="override-reason"
+            autoComplete="off"
+            value={reason}
+            onChange={(e) => setReason(e.target.value)}
+            maxLength={300}
+            placeholder="Demo in five minutes…"
+            className="loom-input mt-2"
+          />
+          <p className="mt-2 text-small text-tertiary">Your name and this reason go into the merge commit and the history.</p>
+          <Button type="submit" variant="danger" size="sm" className="mt-2 w-full" disabled={reason.trim().length < 4}>
+            Merge anyway
+          </Button>
+        </form>
+      </PopoverContent>
+    </Popover>
   )
 }
 
@@ -386,7 +467,7 @@ function ChangeDetail({
         <MonoChip title={change.branchName}>{change.branchName.replace(/^session\//, '')}</MonoChip>
         {change.moduleName && (
           <span className="hidden text-small text-tertiary md:inline">
-            {change.moduleEmoji} {change.moduleName}
+            {change.moduleName}
           </span>
         )}
         <div className="ml-auto flex items-center gap-2">
@@ -553,7 +634,7 @@ function TreeLevel({
             onClick={() => onSelect(full)}
             className={cn(
               'flex h-7 w-full items-center gap-1.5 rounded pr-2 text-left font-mono text-code transition-colors duration-micro',
-              isSel ? 'bg-lav-fill text-lav-300' : 'text-secondary hover:bg-raised hover:text-primary',
+              isSel ? 'bg-signal-fill text-signal-300' : 'text-secondary hover:bg-raised hover:text-primary',
             )}
             style={{ paddingLeft: depth * 14 + 22 }}
           >

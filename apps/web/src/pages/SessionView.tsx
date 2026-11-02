@@ -22,7 +22,7 @@ import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import { Group, Panel, Separator, type Layout } from 'react-resizable-panels'
 import { Drawer } from 'vaul'
-import { cacheHitRate, formatCost, formatTokens, sumUsage } from '@loom/shared'
+import { cacheHitRate, deriveSessionState, formatCost, formatTokens, latestCommitSeq, sumUsage } from '@loom/shared'
 import { openSettings } from '../components/CommandPalette'
 import { ChatLog } from '../components/ChatLog'
 import { Composer } from '../components/Composer'
@@ -41,6 +41,16 @@ import { wsClient } from '../lib/ws'
 import { useAuth } from '../state/auth'
 import { useSessionStream } from '../state/useSessionStream'
 import { useProject } from './ProjectShell'
+import { identityColor, unitCode } from '../lib/identity'
+import { ChecksDock } from '../components/Checks'
+import { latestOf, latestTests } from '../components/eventStream'
+import { TestCases } from '../components/TestCases'
+import { StateChip } from '../components/StateChip'
+import { useNow } from '../lib/time'
+import { useTestPresence } from '../state/useTestPresence'
+import { usePreviewUrl } from '../state/usePreviewUrl'
+import { usePolicy } from '../state/usePolicy'
+import { CatchUpCard, PlanStrip } from '../components/SessionAwareness'
 
 const NUMBER_TIMING: EffectTiming = { duration: 180, easing: 'cubic-bezier(0.2,0,0,1)' }
 
@@ -54,14 +64,17 @@ function formatDuration(ms: number): string {
 
 export function SessionView() {
   const { sessionId } = useParams<{ sessionId: string }>()
-  const { projectId, feed } = useProject()
+  const { projectId, feed, detailQuery } = useProject()
   const { user } = useAuth()
   const navigate = useNavigate()
   const stream = useSessionStream(sessionId ?? null)
   const isDesktop = useMediaQuery('(min-width: 1024px)')
-  const [sidebarOpen, setSidebarOpen] = useState(() => localStorage.getItem('loom.sidebar.open') !== '0')
+  const [sidebarOpen, setSidebarOpen] = useState(() => readFlag('loom.sidebar.open'))
   const [drawerOpen, setDrawerOpen] = useState(false)
-  const [previewOpen, setPreviewOpen] = useState(false)
+  // the test bench is the room's shared screen — open unless someone closed it
+  const [previewOpen, setPreviewOpen] = useState(() => readFlag('loom.preview.open'))
+  // below 1024px the bench is a bottom drawer, opened on demand
+  const [benchDrawer, setBenchDrawer] = useState(false)
   const [forking, setForking] = useState(false)
   const [ending, setEnding] = useState(false)
   const [serverError, setServerError] = useState<string | null>(null)
@@ -77,8 +90,13 @@ export function SessionView() {
   const [jumpSeq, setJumpSeq] = useState<number | null>(null)
 
   useEffect(() => {
-    localStorage.setItem('loom.sidebar.open', sidebarOpen ? '1' : '0')
+    writeFlag('loom.sidebar.open', sidebarOpen)
   }, [sidebarOpen])
+  useEffect(() => {
+    writeFlag('loom.preview.open', previewOpen)
+  }, [previewOpen])
+  const testing = useTestPresence(sessionId ?? null, user?.id)
+  const previewSrc = usePreviewUrl(sessionId && (previewOpen || benchDrawer) ? { session: sessionId } : null)
 
   // F6: [ and ] toggle the spectate panel
   useEffect(() => {
@@ -155,6 +173,8 @@ export function SessionView() {
   const meta = stream.detail
   const session = meta?.session
   const isDriver = Boolean(session && user && session.driverUserId === user.id)
+  const isDriverRef = useRef(isDriver)
+  isDriverRef.current = isDriver
   const isEnded = session?.status === 'ended'
   const watchers = useMemo(() => feed.presence.filter((p) => p.viewing === sessionId), [feed.presence, sessionId])
   // F5: other viewers' read positions (never your own avatar)
@@ -182,6 +202,56 @@ export function SessionView() {
     return last
   }, [stream.events])
   const usage = useMemo(() => sumUsage(stream.events), [stream.events])
+  const latest = useMemo(() => latestOf(stream.events), [stream.events])
+  const tests = useMemo(() => latestTests(stream.events), [stream.events])
+  const commitSeq = useMemo(() => latestCommitSeq(stream.events), [stream.events])
+  const { policy, update: updatePolicy } = usePolicy(projectId)
+  const nowTick = useNow(30_000)
+  const derived = useMemo(
+    () =>
+      deriveSessionState({
+        events: stream.events,
+        ended: stream.detail?.session.status === 'ended',
+        driverName: stream.detail?.session.driverName,
+        checking: Boolean(stream.checking),
+        now: nowTick,
+      }),
+    [stream.events, stream.detail, stream.checking, nowTick],
+  )
+  const recordVerdict = async (planId: string, caseId: string, verdict: 'pass' | 'fail', note?: string) => {
+    try {
+      await api.post(`/api/sessions/${sessionId}/tests`, { planId, caseId, verdict, note })
+    } catch (err) {
+      toast(err instanceof Error ? err.message : 'Could not record that — try again')
+    }
+  }
+  const openBench = () => (isDesktop ? setPreviewOpen(true) : setBenchDrawer(true))
+
+  // a teammate's failing test reaches the driver right away (it also reaches the agent next turn)
+  useEffect(() => {
+    if (!sessionId) return
+    return wsClient.onMessage((msg) => {
+      if (msg.t !== 'event' || msg.sessionId !== sessionId || msg.event.type !== 'test_verdict') return
+      const p = msg.event.payload
+      if (p.verdict === 'fail' && p.byUserId !== user?.id) toast(`${p.byName} marked a test failing${p.note ? `: ${p.note.slice(0, 80)}` : ''}`)
+    })
+  }, [sessionId, user?.id])
+
+  // the driver hears when someone starts testing, and when a tester's browser breaks
+  const knownTesters = useRef<Set<string>>(new Set())
+  useEffect(() => {
+    for (const t of testing.testers) {
+      if (!knownTesters.current.has(t.userId) && isDriverRef.current) toast(`${t.name} is testing the preview`)
+      knownTesters.current.add(t.userId)
+    }
+  }, [testing.testers])
+  const lastErrorToast = useRef<string | null>(null)
+  useEffect(() => {
+    const err = testing.actions.find((a) => a.kind === 'error')
+    if (!err || err.id === lastErrorToast.current) return
+    lastErrorToast.current = err.id
+    if (Date.now() - err.at < 3000) toast(`${err.name} hit an error in the preview: ${err.message?.slice(0, 80) ?? ''}`)
+  }, [testing.actions])
   const freshSession = !stream.loading && stream.events.length === 0
 
   const fork = async (atEventId?: string, anchorEl?: HTMLElement | null) => {
@@ -189,7 +259,7 @@ export function SessionView() {
     setForking(true)
     try {
       // M3 — the hero moment plays while the fork request runs
-      const forkerColor = user?.avatarColor ?? 'var(--lav-500)'
+      const forkerColor = identityColor(user?.avatarColor)
       const [res] = await Promise.all([
         api.post<{ session: { id: string } }>(`/api/sessions/${sessionId}/fork`, { atEventId }),
         anchorEl ? momentFork(anchorEl, forkerColor) : Promise.resolve(),
@@ -249,6 +319,54 @@ export function SessionView() {
     </PaneBoundary>
   ) : null
 
+  const benchPane = (
+      <PreviewPane
+        src={previewSrc}
+        openHref={`/preview/session/${sessionId}/`}
+        reloadKey={previewReloadKey}
+        onClose={() => (isDesktop ? setPreviewOpen(false) : setBenchDrawer(false))}
+        label={previewReloadKey > 0 ? session.branchName : 'nothing built yet'}
+        sessionId={isEnded ? undefined : session.id}
+        testers={testing.testers}
+        actions={testing.actions}
+        onReportBug={
+          isEnded
+            ? undefined
+            : (text) => {
+                // driver files straight to the agent; spectators propose it (driver decides)
+                const ok = isDriver ? stream.sendMessage(text) : wsClient.suggest(session.id, text)
+                if (!ok) toast('Connection lost — try again in a second.')
+                else toast(isDriver ? 'Bug sent to the agent' : `Bug filed — ${session.driverName} can accept it with one click`)
+                return ok
+              }
+        }
+        dock={
+          <>
+          {tests && (
+            <div className="max-h-[38%] shrink-0 overflow-y-auto border-t-2 border-hairline-strong">
+              <TestCases compact plan={tests.plan} verdicts={tests.verdicts} latestCommitSeq={commitSeq} onVerdict={isEnded ? undefined : recordVerdict} />
+            </div>
+          )}
+          <ChecksDock
+            latest={latest.checks}
+            checking={stream.checking}
+            onRun={
+              isEnded
+                ? undefined
+                : async () => {
+                    try {
+                      await api.post(`/api/sessions/${session.id}/checks`)
+                    } catch (err) {
+                      toast(err instanceof Error ? err.message : 'Could not run checks')
+                    }
+                  }
+            }
+          />
+          </>
+        }
+      />
+  )
+
   return (
     <div className="flex min-h-0 flex-1 flex-col">
       {/* session header: identity + state on the left, the few actions people use most on the right, the rest under ⋯ */}
@@ -259,7 +377,7 @@ export function SessionView() {
             className="flex shrink-0 items-center gap-1.5 rounded px-1 py-0.5 text-ui text-secondary transition-colors duration-micro hover:text-primary"
             aria-label={`Back to ${meta.moduleName}`}
           >
-            <span aria-hidden>{meta.moduleEmoji}</span>
+            <span aria-hidden className="tnum telemetry bg-primary px-1 font-bold text-canvas">{unitCode(detailQuery.data?.modules ?? [], session.moduleId)}</span>
             <span className="hidden max-w-[10rem] truncate md:inline">{meta.moduleName}</span>
           </Link>
           <span className="hidden text-tertiary md:inline" aria-hidden>
@@ -277,13 +395,8 @@ export function SessionView() {
           )}
           {isEnded ? (
             <Pill className="shrink-0">ended</Pill>
-          ) : streamingNow ? (
-            <LivePill className="shrink-0" label={stream.agentStatus === 'running_tools' ? 'Working' : 'Live'} />
           ) : (
-            <span className="hidden shrink-0 items-center gap-1.5 text-small text-tertiary sm:inline-flex" role="status">
-              <StatusDot tone={stream.agentStatus === 'error' ? 'danger' : 'idle'} />
-              {stream.agentStatus === 'error' ? 'needs attention' : 'idle'}
-            </span>
+            <StateChip state={derived.state} detail={derived.detail} />
           )}
         </div>
 
@@ -422,15 +535,19 @@ export function SessionView() {
             </Link>
           </Tooltip>
           <Button
-            variant={previewOpen ? 'outline' : 'ghost'}
+            variant={previewOpen && isDesktop ? 'outline' : 'ghost'}
             size="sm"
-            onClick={() => setPreviewOpen((v) => !v)}
-            className="hidden lg:inline-flex"
-            aria-pressed={previewOpen}
-            aria-label="Live preview"
+            onClick={() => (isDesktop ? setPreviewOpen((v) => !v) : setBenchDrawer(true))}
+            aria-pressed={isDesktop ? previewOpen : undefined}
+            aria-label={`Test bench${testing.testers.length > 0 ? `, ${testing.testers.length} testing` : ''}`}
           >
             <MonitorPlay size={14} strokeWidth={1.5} aria-hidden />
-            <span className="hidden xl:inline">Preview</span>
+            <span className="hidden xl:inline">Test bench</span>
+            {testing.testers.length > 0 && (
+              <span className="tnum telemetry bg-signal-500 px-1 text-on-accent" aria-hidden>
+                {testing.testers.length}
+              </span>
+            )}
           </Button>
           <Button
             variant={sidebarOpen && isDesktop ? 'outline' : 'ghost'}
@@ -529,6 +646,15 @@ export function SessionView() {
         </div>
       </header>
 
+      {policy?.frozen && (
+        <div role="status" className="flex items-center gap-3 border-b-2 border-hairline-strong bg-primary px-5 py-1.5 text-canvas">
+          <span className="telemetry font-bold">Frozen</span>
+          <span className="text-small">{policy.frozenBy ?? 'A teammate'} froze this project — the agent can&rsquo;t change any files until it&rsquo;s unfrozen.</span>
+          <button type="button" onClick={() => void updatePolicy({ frozen: false })} className="telemetry ml-auto underline-offset-2 hover:underline">
+            Unfreeze
+          </button>
+        </div>
+      )}
       {serverError && (
         <div role="alert" className="border-b border-hairline bg-danger-fill px-5 py-1.5 text-center text-small text-danger">
           {serverError}
@@ -546,11 +672,13 @@ export function SessionView() {
             <div className="flex items-center justify-center gap-2 border-b border-hairline px-5 py-2 text-small text-secondary">
               <span className="font-mono text-code-sm text-tertiary">session ended</span>
               <span aria-hidden>·</span>
-              <button onClick={(e) => void fork(undefined, e.currentTarget)} className="text-lav-300 transition-colors duration-micro hover:text-lav-400">
+              <button onClick={(e) => void fork(undefined, e.currentTarget)} className="text-signal-300 transition-colors duration-micro hover:text-signal-400">
                 Fork to continue
               </button>
             </div>
           )}
+          <CatchUpCard sessionId={session.id} events={stream.events} selfId={user?.id} />
+          {!isEnded && latest.plan && <PlanStrip plan={latest.plan.payload} working={streamingNow} />}
           <PaneBoundary label="event log">
           <ChatLog
             testId="main-log"
@@ -575,6 +703,17 @@ export function SessionView() {
               isDriver,
               projectId,
               onResolveSuggestion: (suggestionId, decision) => wsClient.resolveSuggestion(session.id, suggestionId, decision),
+              onVerdict: isEnded ? undefined : recordVerdict,
+              onOpenBench: openBench,
+              selfId: user?.id,
+              latestCommitSeq: commitSeq,
+              onApproval: async (requestId, decision) => {
+                try {
+                  await api.post(`/api/sessions/${session.id}/approvals/${requestId}`, { decision })
+                } catch (err) {
+                  toast(err instanceof Error ? err.message : 'Could not record that')
+                }
+              },
               onAnnotate: (targetEventId, kind, body) => {
                 if (!wsClient.annotate(session.id, targetEventId, kind, body)) {
                   toast('Connection lost — try again in a second.')
@@ -600,7 +739,7 @@ export function SessionView() {
                     <ul className="mt-2 space-y-1">
                       {meta.digest.bullets.map((b, i) => (
                         <li key={i} className="flex gap-2 text-body leading-relaxed text-secondary">
-                          <span aria-hidden className="mt-[9px] h-1 w-1 shrink-0 rounded-full bg-lav-500" />
+                          <span aria-hidden className="mt-[9px] h-1 w-1 shrink-0 rounded-full bg-signal-500" />
                           <span className="min-w-0">{b}</span>
                         </li>
                       ))}
@@ -634,7 +773,16 @@ export function SessionView() {
               </div>
             </div>
           ) : isDriver && !isEnded ? (
-            <Composer sessionId={session.id} agentStatus={stream.agentStatus} fresh={freshSession} onSend={stream.sendMessage} />
+            <Composer
+              sessionId={session.id}
+              agentStatus={stream.agentStatus}
+              fresh={freshSession}
+              onSend={stream.sendMessage}
+              checkSimilar={async (text) =>
+                (await api.post<{ matches: Array<{ sessionId: string; title: string; driverName: string; ask: string }> }>(`/api/sessions/${session.id}/similar`, { text })).matches
+              }
+              onOpenSession={(id) => navigate(`/p/${projectId}/s/${id}`)}
+            />
           ) : (
             <div className="border-t border-hairline px-6 py-3.5">
               <div className="mx-auto max-w-[760px]">
@@ -697,12 +845,7 @@ export function SessionView() {
           <>
             <ResizeHandle />
             <Panel id="preview" defaultSize="34" minSize={320} className="flex h-full min-w-0">
-              <PreviewPane
-                src={`/preview/session/${sessionId}/`}
-                reloadKey={previewReloadKey}
-                onClose={() => setPreviewOpen(false)}
-                label={previewReloadKey > 0 ? session.branchName : 'nothing built yet — send a message'}
-              />
+              {benchPane}
             </Panel>
           </>
         )}
@@ -716,6 +859,19 @@ export function SessionView() {
           </>
         )}
       </Group>
+
+      {/* below 1024px the test bench is a bottom sheet */}
+      {!isDesktop && (
+        <Drawer.Root direction="bottom" open={benchDrawer} onOpenChange={setBenchDrawer}>
+          <Drawer.Portal>
+            <Drawer.Overlay className="fixed inset-0 z-scrim bg-scrim" />
+            <Drawer.Content className="fixed inset-x-0 bottom-0 z-modal flex h-[88vh] flex-col border-t-2 border-hairline-strong bg-surface outline-none">
+              <Drawer.Title className="sr-only">Test bench</Drawer.Title>
+              <div className="flex min-h-0 flex-1 overscroll-contain">{benchPane}</div>
+            </Drawer.Content>
+          </Drawer.Portal>
+        </Drawer.Root>
+      )}
 
       {/* below 1024px the sidebar is a right-anchored drawer */}
       {!isDesktop && (
@@ -734,6 +890,22 @@ export function SessionView() {
       )}
     </div>
   )
+}
+
+function readFlag(key: string): boolean {
+  try {
+    return localStorage.getItem(key) !== '0'
+  } catch {
+    return true
+  }
+}
+
+function writeFlag(key: string, on: boolean): void {
+  try {
+    localStorage.setItem(key, on ? '1' : '0')
+  } catch {
+    /* storage unavailable */
+  }
 }
 
 const LAYOUT_KEY = 'loom.session.layout'
@@ -759,7 +931,7 @@ function saveLayout(layout: Layout): void {
 function ResizeHandle() {
   return (
     <Separator className="loom-separator group relative w-1 shrink-0">
-      <span aria-hidden className="absolute inset-y-0 left-0 w-px bg-hairline transition-colors duration-micro group-hover:bg-lav-border group-data-[separator-active]:bg-lav-border" />
+      <span aria-hidden className="absolute inset-y-0 left-0 w-px bg-hairline transition-colors duration-micro group-hover:bg-signal-border group-data-[separator-active]:bg-signal-border" />
     </Separator>
   )
 }
